@@ -2,7 +2,10 @@
 //! the deterministic rules. Every field has a default, so an empty file is a valid policy.
 
 use std::collections::BTreeMap;
+use std::io::ErrorKind;
+use std::path::Path;
 
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -154,6 +157,16 @@ impl Policy {
         anyhow::ensure!(p.reviewers.one_at <= p.reviewers.none_at, "reviewers.one_at must not exceed reviewers.none_at");
         Ok(p)
     }
+
+    /// A missing file is the default policy. So is a path that cannot exist because a parent is a file
+    /// (`/dev/null/none`): both mean "no policy here", not a broken one.
+    pub fn load(path: &Path) -> anyhow::Result<Policy> {
+        match std::fs::read_to_string(path) {
+            Ok(s) => Policy::from_yaml(&s).with_context(|| format!("reading {}", path.display())),
+            Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => Ok(Policy::default()),
+            Err(e) => Err(e).context(format!("reading {}", path.display())),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -173,5 +186,23 @@ mod tests {
     fn typos_and_inverted_bands_are_errors() {
         assert!(Policy::from_yaml("reviewrs: {}").is_err());
         assert!(Policy::from_yaml("reviewers: {none_at: 0.5, one_at: 0.8}").is_err());
+    }
+
+    #[test]
+    fn a_path_under_a_file_is_missing_like_a_missing_file() {
+        let dir = std::env::temp_dir().join(format!("pr-guard-policy-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("policy.yml");
+        std::fs::write(&file, "mode: shadow\n").unwrap();
+        assert_eq!(Policy::load(&file).unwrap().mode, Mode::Shadow);
+        assert_eq!(Policy::load(&dir.join("absent.yml")).unwrap(), Policy::default());
+        assert_eq!(Policy::load(&file.join("none")).unwrap(), Policy::default());
+        #[cfg(unix)]
+        assert_eq!(Policy::load(Path::new("/dev/null/none")).unwrap(), Policy::default());
+        std::fs::write(&file, "reviewrs: {}\n").unwrap();
+        assert!(Policy::load(&file).is_err());
+        // A directory is not a policy: that is a mistake to report, not a default.
+        assert!(Policy::load(&dir).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

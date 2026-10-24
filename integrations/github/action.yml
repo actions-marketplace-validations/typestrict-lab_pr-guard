@@ -1,0 +1,95 @@
+name: pr-guard
+description: Decide how many reviewers a pull request needs, with TS-PRGuard and a YAML policy, on the runner.
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  version:
+    description: pr-guard release to install.
+    default: "0.1.0"
+  mode:
+    description: "shadow (report, never fail) or enforce; empty keeps the policy's mode."
+    default: ""
+  policy:
+    description: Policy file; a missing file means the default policy.
+    default: .github/pr-guard.yml
+  args:
+    description: Extra arguments for `pr-guard check` (for example `--no-model` or `--label pr-guard:skip`).
+    default: ""
+  upload-sarif:
+    description: Upload the findings to code scanning (needs `security-events: write`).
+    default: "true"
+
+outputs:
+  exit-code:
+    description: 0 passed, 1 blocked by the policy, 2 error.
+    value: ${{ steps.check.outputs.exit-code }}
+  comment:
+    description: Path of the sticky comment's markdown.
+    value: pr-guard.md
+  sarif:
+    description: Path of the SARIF file.
+    value: pr-guard.sarif
+
+runs:
+  using: composite
+  steps:
+    - name: Install pr-guard
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64) target=x86_64-unknown-linux-gnu ;;
+          Linux-ARM64) target=aarch64-unknown-linux-gnu ;;
+          macOS-ARM64) target=aarch64-apple-darwin ;;
+          macOS-X64) target=x86_64-apple-darwin ;;
+          Windows-X64) target=x86_64-pc-windows-msvc ;;
+          *) echo "::error::pr-guard has no build for ${RUNNER_OS} ${RUNNER_ARCH}"; exit 2 ;;
+        esac
+        dir="${RUNNER_TEMP}/pr-guard-${VERSION}"
+        mkdir -p "$dir"
+        curl -fsSL --retry 3 "https://github.com/typestrict-lab/pr-guard/releases/download/v${VERSION}/pr-guard-${target}.tar.gz" | tar -xz -C "$dir"
+        echo "$dir" >> "$GITHUB_PATH"
+
+    # The weights (~150 MB) download once per version, not on every pull request.
+    - name: Cache the model
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pr-guard
+        key: pr-guard-model-${{ runner.os }}-${{ inputs.version }}
+
+    - name: Check
+      id: check
+      shell: bash
+      # Inputs through the environment, never pasted into the script: a policy path or args cannot inject shell.
+      env:
+        MODE: ${{ inputs.mode }}
+        POLICY: ${{ inputs.policy }}
+        ARGS: ${{ inputs.args }}
+      run: |
+        set +e
+        mode=()
+        [[ -n "$MODE" ]] && mode=(--mode "$MODE")
+        # shellcheck disable=SC2086 # args is a list of flags on purpose
+        pr-guard check --policy "$POLICY" "${mode[@]}" $ARGS \
+          --format sarif --output pr-guard.sarif --format markdown --output pr-guard.md
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        if [[ -f pr-guard.md ]]; then cat pr-guard.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+    # Upload before failing the job, so a blocked pull request still shows its findings.
+    - name: Upload SARIF
+      if: ${{ always() && inputs.upload-sarif == 'true' && hashFiles('pr-guard.sarif') != '' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: pr-guard.sarif
+        category: pr-guard
+
+    - name: Result
+      shell: bash
+      env:
+        CODE: ${{ steps.check.outputs.exit-code }}
+      run: exit "${CODE:-2}"

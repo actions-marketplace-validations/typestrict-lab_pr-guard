@@ -1,0 +1,9 @@
+# pre-commit (https://pre-commit.com): the deterministic checks on the staged changes, no model, instant.
+# Needs the pr-guard binary on PATH.
+- id: pr-guard
+  name: pr-guard
+  description: Secrets, sensitive paths, destructive SQL and size on the staged changes.
+  entry: pr-guard check --staged --no-model
+  language: system
+  pass_filenames: false
+  stages: [pre-commit]

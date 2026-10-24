@@ -8,9 +8,8 @@
 # Exit code 1 from pr-guard means "blocked by the policy", which is a valid outcome here,
 # so the loop keeps going. The sticky comment of each run lands in <scenario>/comment.md.
 #
-# The policy path must not exist so pr-guard falls back to its default policy. pr-guard only
-# treats "file not found" as missing; a path like /dev/null/none fails with "not a directory",
-# so the default is a file name inside a fresh empty temp dir. Set PR_GUARD_POLICY to try a real one.
+# The policy path must not exist so pr-guard falls back to its default policy: a file name
+# inside a fresh empty temp dir. Set PR_GUARD_POLICY to try a real one.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

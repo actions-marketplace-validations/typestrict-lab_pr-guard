@@ -1,4 +1,7 @@
+pub mod ci;
 pub mod diff;
+pub mod format;
+pub mod git;
 pub mod lang;
 pub mod model;
 pub mod policy;
