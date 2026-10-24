@@ -1,0 +1,23 @@
+[package]
+name = "pr-guard"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Pull request guard: a YAML policy over TS-PRGuard's answers and deterministic checks decides how many reviewers a change needs."
+repository = "https://github.com/typestrict-lab/pr-guard"
+
+[dependencies]
+anyhow = "=1.0.104"
+clap = { version = "=4.6.7", features = ["derive"] }
+globset = "0.4"
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "download-binaries", "tls-native"] }
+regex = "1"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+serde_yaml = "0.9"
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
