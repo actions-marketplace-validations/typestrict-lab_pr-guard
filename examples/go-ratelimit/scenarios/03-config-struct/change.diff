@@ -1,0 +1,56 @@
+diff --git a/limiter.go b/limiter.go
+--- a/limiter.go
++++ b/limiter.go
+@@ -21,9 +21,23 @@
+ 	buckets map[string]*bucket
+ }
+ 
+-// New returns a limiter that allows rate requests per second with bursts of up to burst.
+-func New(rate float64, burst int) *Limiter {
+-	return &Limiter{rate: rate, burst: float64(burst), now: time.Now, buckets: make(map[string]*bucket)}
++// Config describes a limiter.
++type Config struct {
++	// Rate is the number of requests per second each key earns.
++	Rate float64
++	// Burst is the most requests a key can make at once.
++	Burst int
++	// Clock returns the current time; nil means time.Now.
++	Clock func() time.Time
++}
++
++// New returns a limiter for cfg.
++func New(cfg Config) *Limiter {
++	clock := cfg.Clock
++	if clock == nil {
++		clock = time.Now
++	}
++	return &Limiter{rate: cfg.Rate, burst: float64(cfg.Burst), now: clock, buckets: make(map[string]*bucket)}
+ }
+ 
+ // Allow reports whether one request for key may proceed now, consuming a token if so.
+diff --git a/limiter_test.go b/limiter_test.go
+--- a/limiter_test.go
++++ b/limiter_test.go
+@@ -14,9 +14,7 @@
+ 
+ func newTestLimiter(rate float64, burst int) (*Limiter, *fakeClock) {
+ 	clock := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+-	l := New(rate, burst)
+-	l.now = clock.Now
+-	return l, clock
++	return New(Config{Rate: rate, Burst: burst, Clock: clock.Now}), clock
+ }
+ 
+ func TestBurstThenRefill(t *testing.T) {
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -3,7 +3,7 @@
+ Token bucket rate limiting for `net/http` services.
+ 
+ ```go
+-limiter := ratelimit.New(5, 10) // 5 requests per second, bursts of 10
++limiter := ratelimit.New(ratelimit.Config{Rate: 5, Burst: 10})
+ http.ListenAndServe(":8080", ratelimit.Middleware(limiter, ratelimit.ClientIP, mux))
+ ```
+ 

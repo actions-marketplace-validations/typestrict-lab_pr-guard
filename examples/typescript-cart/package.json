@@ -1,0 +1,18 @@
+{
+  "name": "@shop/cart",
+  "version": "1.4.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/cart.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "vitest run",
+    "format": "prettier --write src test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.0"
+  }
+}

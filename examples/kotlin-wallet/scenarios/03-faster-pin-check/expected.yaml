@@ -1,0 +1,8 @@
+description_matches: yes
+vulnerability: yes
+cwe: CWE-916
+breaking: yes
+tests: missing
+type: Performance improvement
+complexity: 1
+note: "Replaces PBKDF2 with a single salted MD5, so a leaked table of 4 to 8 digit PINs is cracked instantly; existing stored hashes also stop verifying."

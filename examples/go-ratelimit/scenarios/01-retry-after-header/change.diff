@@ -1,0 +1,73 @@
+diff --git a/limiter.go b/limiter.go
+--- a/limiter.go
++++ b/limiter.go
+@@ -28,15 +28,21 @@
+ 
+ // Allow reports whether one request for key may proceed now, consuming a token if so.
+ func (l *Limiter) Allow(key string) bool {
++	ok, _ := l.Take(key)
++	return ok
++}
++
++// Take is like Allow, but when the request is limited it also reports how long until a token is free.
++func (l *Limiter) Take(key string) (bool, time.Duration) {
+ 	l.mu.Lock()
+ 	defer l.mu.Unlock()
+ 
+ 	b := l.refill(key)
+ 	if b.tokens < 1 {
+-		return false
++		return false, time.Duration((1 - b.tokens) / l.rate * float64(time.Second))
+ 	}
+ 	b.tokens--
+-	return true
++	return true, 0
+ }
+ 
+ // refill returns the bucket for key with the tokens earned since its last use. Callers hold l.mu.
+diff --git a/middleware.go b/middleware.go
+--- a/middleware.go
++++ b/middleware.go
+@@ -2,8 +2,10 @@
+ 
+ import (
+ 	"log"
++	"math"
+ 	"net"
+ 	"net/http"
++	"strconv"
+ )
+ 
+ // KeyFunc extracts the rate limit key from a request.
+@@ -27,7 +29,8 @@
+ 			http.Error(w, "bad request", http.StatusBadRequest)
+ 			return
+ 		}
+-		if !l.Allow(k) {
++		if ok, wait := l.Take(k); !ok {
++			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+ 			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+ 			return
+ 		}
+diff --git a/limiter_test.go b/limiter_test.go
+--- a/limiter_test.go
++++ b/limiter_test.go
+@@ -65,3 +65,18 @@
+ 		t.Fatalf("got status codes %v, want [200 429]", codes)
+ 	}
+ }
++
++func TestMiddlewareSetsRetryAfter(t *testing.T) {
++	l, _ := newTestLimiter(0.5, 1)
++	h := Middleware(l, ClientIP, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
++	var rec *httptest.ResponseRecorder
++	for i := 0; i < 2; i++ {
++		rec = httptest.NewRecorder()
++		req := httptest.NewRequest(http.MethodGet, "/", nil)
++		req.RemoteAddr = "203.0.113.7:51234"
++		h.ServeHTTP(rec, req)
++	}
++	if got := rec.Header().Get("Retry-After"); got != "2" {
++		t.Fatalf("Retry-After = %q, want \"2\"", got)
++	}
++}

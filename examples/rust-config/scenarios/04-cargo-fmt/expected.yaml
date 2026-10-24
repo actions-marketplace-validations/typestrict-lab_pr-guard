@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: not_applicable
+type: Formatting or style only
+complexity: 0
+note: "Formatting only: rustfmt rewraps long lines in loader.rs, duration.rs and the tests, same tokens."

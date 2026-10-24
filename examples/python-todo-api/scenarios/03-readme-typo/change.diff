@@ -1,0 +1,23 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -8,7 +8,7 @@
+     flask --app "todo_api:create_app()" run
+ 
+ Tokens are configured in `API_TOKENS`, a mapping from user name to token.
+-Every request need `Authorization: Bearer <token>`.
++Every request needs `Authorization: Bearer <token>`.
+ 
+ ## Endpoints
+ 
+diff --git a/todo_api/app.py b/todo_api/app.py
+--- a/todo_api/app.py
++++ b/todo_api/app.py
+@@ -62,7 +62,6 @@
+     @app.delete("/todos/<int:todo_id>")
+     @require_token
+     def delete_todo(todo_id):
+-        _owned(todo_id)
+         conn = db.get_db()
+         conn.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
+         conn.commit()

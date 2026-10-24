@@ -1,0 +1,28 @@
+diff --git a/todo_api/app.py b/todo_api/app.py
+--- a/todo_api/app.py
++++ b/todo_api/app.py
+@@ -28,10 +28,11 @@
+     @require_token
+     def list_todos():
+         page = max(request.args.get("page", 1, type=int), 1)
++        per_page = min(request.args.get("per_page", PAGE_SIZE, type=int), 100)
+         offset = (page - 1) * PAGE_SIZE
+         rows = db.get_db().execute(
+             "SELECT * FROM todos WHERE owner = ? ORDER BY id LIMIT ? OFFSET ?",
+-            (g.user, PAGE_SIZE, offset),
++            (g.user, per_page, offset),
+         ).fetchall()
+         return jsonify([to_json(r) for r in rows])
+ 
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -12,7 +12,7 @@
+ 
+ ## Endpoints
+ 
+-- `GET /todos?page=N` lists your items, 20 per page
++- `GET /todos?page=N&per_page=M` lists your items, 20 per page by default (max 100)
+ - `POST /todos` with `{"title": "..."}` creates an item
+ - `PATCH /todos/<id>` with `{"done": true}` updates an item
+ - `DELETE /todos/<id>` removes an item

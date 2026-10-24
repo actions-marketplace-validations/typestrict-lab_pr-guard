@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: missing
+type: New feature
+complexity: 0
+note: "X-Total-Pages uses integer division, so a partial last page is never linked (25 posts report 2 pages, fewer than 10 report 0); no tests for pagination."

@@ -1,0 +1,28 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -7,4 +7,24 @@
+ http.ListenAndServe(":8080", ratelimit.Middleware(limiter, ratelimit.ClientIP, mux))
+ ```
+ 
++## Choosing rate and burst
++
++`rate` is the sustained number of requests per second a client may make and
++`burst` is how many it can make at once after being idle. A good starting
++point is a burst of about two seconds of traffic: `New(5, 10)`.
++
++## Behind a reverse proxy
++
++`ClientIP` uses the address of the TCP connection. Behind a load balancer that
++is the balancer's address, so every client shares one bucket. Write a
++`KeyFunc` that reads the header your proxy sets, and only trust it when the
++connection comes from the proxy; otherwise clients can pick their own key.
++
++## Memory
++
++Each key keeps a small bucket. Call `Forget` periodically (for example every
++minute with `Forget(10 * time.Minute)`) to drop idle ones.
++
++## Development
++
+ Run `go test ./...` before sending a change.

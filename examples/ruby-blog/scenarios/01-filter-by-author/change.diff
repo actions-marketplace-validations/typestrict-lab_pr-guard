@@ -1,0 +1,42 @@
+diff --git a/app.rb b/app.rb
+--- a/app.rb
++++ b/app.rb
+@@ -28,7 +28,9 @@
+   before { content_type :json }
+ 
+   get "/posts" do
+-    store.published.map(&:to_h).to_json
++    posts = store.published
++    posts = posts.select { |p| p.author == params[:author] } if params[:author]
++    posts.map(&:to_h).to_json
+   end
+ 
+   get "/posts/:id" do
+diff --git a/test/app_test.rb b/test/app_test.rb
+--- a/test/app_test.rb
++++ b/test/app_test.rb
+@@ -49,4 +49,12 @@
+     post = Post.new(id: "1", title: "t", body: "word " * 50, author: "a")
+     assert_equal "word word...", post.excerpt(12)
+   end
++
++  def test_filter_by_author
++    header "Authorization", "Bearer test-token"
++    send_json :post, "/admin/posts", { title: "By Ana", body: "b", author: "ana", publish: true }
++    create("By admin")
++    get "/posts", author: "ana"
++    assert_equal ["By Ana"], JSON.parse(last_response.body).map { |p| p["title"] }
++  end
+ end
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -2,7 +2,7 @@
+ 
+ A tiny JSON blog API on Sinatra. Posts live in a JSON file (`BLOG_DATA`).
+ 
+-- `GET /posts` lists published posts, newest first
++- `GET /posts` lists published posts, newest first (`?author=` filters by author)
+ - `GET /posts/:id` shows one published post
+ - `POST /admin/posts` and `DELETE /admin/posts/:id` need
+   `Authorization: Bearer $BLOG_ADMIN_TOKEN`

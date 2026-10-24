@@ -1,0 +1,29 @@
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -7,8 +7,24 @@
+     pip install -r requirements.txt
+     flask --app "todo_api:create_app()" run
+ 
++## Authentication
++
+ Tokens are configured in `API_TOKENS`, a mapping from user name to token.
+-Every request need `Authorization: Bearer <token>`.
++Every request needs `Authorization: Bearer <token>`; a missing or unknown
++token gets a 401. Items are always scoped to the token's user, so another
++user's item answers 404 rather than 403.
++
++For local development, pass the mapping when creating the app:
++
++    from todo_api import create_app
++    app = create_app({"API_TOKENS": {"dev": "dev-token"}})
++
++## Examples
++
++    curl -H "Authorization: Bearer dev-token" localhost:5000/todos
++    curl -X POST -H "Authorization: Bearer dev-token" \
++         -H "Content-Type: application/json" \
++         -d '{"title": "Buy milk"}' localhost:5000/todos
+ 
+ ## Endpoints
+ 

@@ -1,0 +1,98 @@
+diff --git a/src/cart.ts b/src/cart.ts
+--- a/src/cart.ts
++++ b/src/cart.ts
+@@ -1,18 +1,14 @@
+-import { Coupon, couponDiscount } from "./discounts";
++import { Coupon } from "./discounts";
+ import { Cents } from "./money";
++import { computeTotals, Totals } from "./pricing";
++
++export type { Totals } from "./pricing";
+ 
+ export interface LineItem {
+   sku: string;
+   name: string;
+   unitPrice: Cents;
+   quantity: number;
+-}
+-
+-export interface Totals {
+-  subtotal: Cents;
+-  discount: Cents;
+-  tax: Cents;
+-  total: Cents;
+ }
+ 
+ export class Cart {
+@@ -44,9 +40,6 @@
+   }
+ 
+   totals(taxRate: number, now: Date = new Date()): Totals {
+-    const subtotal = this.lines().reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
+-    const discount = this.coupon ? couponDiscount(this.coupon, subtotal, now) : 0;
+-    const tax = Math.round((subtotal - discount) * taxRate);
+-    return { subtotal, discount, tax, total: subtotal - discount + tax };
++    return computeTotals(this.lines(), this.coupon, taxRate, now);
+   }
+ }
+diff --git a/src/pricing.ts b/src/pricing.ts
+new file mode 100644
+--- /dev/null
++++ b/src/pricing.ts
+@@ -0,0 +1,27 @@
++import type { LineItem } from "./cart";
++import { Coupon, couponDiscount } from "./discounts";
++import { Cents } from "./money";
++
++export interface Totals {
++  subtotal: Cents;
++  discount: Cents;
++  tax: Cents;
++  total: Cents;
++}
++
++export function subtotalOf(lines: readonly LineItem[]): Cents {
++  return lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
++}
++
++/** Tax applies to the subtotal after the coupon discount. */
++export function computeTotals(
++  lines: readonly LineItem[],
++  coupon: Coupon | null,
++  taxRate: number,
++  now: Date = new Date(),
++): Totals {
++  const subtotal = subtotalOf(lines);
++  const discount = coupon ? couponDiscount(coupon, subtotal, now) : 0;
++  const tax = Math.round((subtotal - discount) * taxRate);
++  return { subtotal, discount, tax, total: subtotal - discount + tax };
++}
+diff --git a/test/pricing.test.ts b/test/pricing.test.ts
+new file mode 100644
+--- /dev/null
++++ b/test/pricing.test.ts
+@@ -0,0 +1,24 @@
++import { describe, expect, it } from "vitest";
++
++import { computeTotals, subtotalOf } from "../src/pricing";
++
++const lines = [
++  { sku: "MUG-01", name: "Coffee mug", unitPrice: 12_50, quantity: 2 },
++  { sku: "BEAN-1K", name: "Beans 1kg", unitPrice: 24_99, quantity: 1 },
++];
++
++describe("pricing", () => {
++  it("sums line items", () => {
++    expect(subtotalOf(lines)).toBe(49_99);
++  });
++
++  it("taxes the discounted subtotal", () => {
++    const coupon = { code: "TEN", percentOff: 10, minSubtotal: 0, expiresAt: new Date("2030-01-01") };
++    expect(computeTotals(lines, coupon, 0.1, new Date("2024-05-01"))).toEqual({
++      subtotal: 49_99,
++      discount: 5_00,
++      tax: 4_50,
++      total: 49_49,
++    });
++  });
++});

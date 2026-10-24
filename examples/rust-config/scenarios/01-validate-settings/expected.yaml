@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: covers
+type: Bug fix
+complexity: 1
+note: "Clean change: validation after parsing, new variant on a non_exhaustive enum, tests for both rules."

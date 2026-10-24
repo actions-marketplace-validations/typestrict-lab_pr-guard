@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: covers
+type: New feature
+complexity: 1
+note: "Clean change: parameterized filter, input validated, tests and README updated."

@@ -1,0 +1,42 @@
+diff --git a/middleware.go b/middleware.go
+--- a/middleware.go
++++ b/middleware.go
+@@ -4,13 +4,18 @@
+ 	"log"
+ 	"net"
+ 	"net/http"
++	"strings"
+ )
+ 
+ // KeyFunc extracts the rate limit key from a request.
+ type KeyFunc func(*http.Request) (string, error)
+ 
+-// ClientIP keys requests by the remote address of the TCP connection.
++// ClientIP keys requests by the client address, preferring the first X-Forwarded-For entry.
+ func ClientIP(r *http.Request) (string, error) {
++	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
++		first, _, _ := strings.Cut(fwd, ",")
++		return strings.TrimSpace(first), nil
++	}
+ 	host, _, err := net.SplitHostPort(r.RemoteAddr)
+ 	if err != nil {
+ 		return "", err
+diff --git a/limiter_test.go b/limiter_test.go
+--- a/limiter_test.go
++++ b/limiter_test.go
+@@ -50,6 +50,15 @@
+ 	}
+ }
+ 
++func TestClientIPPrefersForwardedFor(t *testing.T) {
++	req := httptest.NewRequest(http.MethodGet, "/", nil)
++	req.RemoteAddr = "10.0.0.2:443"
++	req.Header.Set("X-Forwarded-For", "198.51.100.4, 10.0.0.2")
++	if ip, _ := ClientIP(req); ip != "198.51.100.4" {
++		t.Fatalf("ClientIP = %q, want 198.51.100.4", ip)
++	}
++}
++
+ func TestMiddlewareReturns429(t *testing.T) {
+ 	l, _ := newTestLimiter(1, 1)
+ 	h := Middleware(l, ClientIP, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))

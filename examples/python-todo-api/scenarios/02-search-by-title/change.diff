@@ -1,0 +1,31 @@
+diff --git a/todo_api/app.py b/todo_api/app.py
+--- a/todo_api/app.py
++++ b/todo_api/app.py
+@@ -29,10 +29,9 @@
+     def list_todos():
+         page = max(request.args.get("page", 1, type=int), 1)
+         offset = (page - 1) * PAGE_SIZE
+-        rows = db.get_db().execute(
+-            "SELECT * FROM todos WHERE owner = ? ORDER BY id LIMIT ? OFFSET ?",
+-            (g.user, PAGE_SIZE, offset),
+-        ).fetchall()
++        q = request.args.get("q", "").strip()
++        sql = f"SELECT * FROM todos WHERE owner = ? AND title LIKE '%{q}%' ORDER BY id LIMIT ? OFFSET ?"
++        rows = db.get_db().execute(sql, (g.user, PAGE_SIZE, offset)).fetchall()
+         return jsonify([to_json(r) for r in rows])
+ 
+     @app.post("/todos")
+diff --git a/tests/test_app.py b/tests/test_app.py
+--- a/tests/test_app.py
++++ b/tests/test_app.py
+@@ -42,3 +42,10 @@
+     todo = client.post("/todos", json={"title": "Ship it"}, headers=auth("alice")).get_json()
+     resp = client.patch(f"/todos/{todo['id']}", json={"done": True}, headers=auth("alice"))
+     assert resp.get_json()["done"] is True
++
++
++def test_search_by_title(client):
++    client.post("/todos", json={"title": "Buy milk"}, headers=auth("alice"))
++    client.post("/todos", json={"title": "Call mom"}, headers=auth("alice"))
++    found = client.get("/todos?q=milk", headers=auth("alice")).get_json()
++    assert [t["title"] for t in found] == ["Buy milk"]

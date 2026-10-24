@@ -1,0 +1,40 @@
+diff --git a/src/cart.ts b/src/cart.ts
+--- a/src/cart.ts
++++ b/src/cart.ts
+@@ -15,6 +15,8 @@
+   total: Cents;
+ }
+ 
++export const MAX_QUANTITY_PER_SKU = 99;
++
+ export class Cart {
+   private readonly items = new Map<string, LineItem>();
+   private coupon: Coupon | null = null;
+@@ -24,6 +26,9 @@
+       throw new RangeError("quantity must be a positive integer");
+     }
+     const existing = this.items.get(item.sku);
++    if ((existing?.quantity ?? 0) + quantity > MAX_QUANTITY_PER_SKU) {
++      throw new RangeError(`at most ${MAX_QUANTITY_PER_SKU} units of ${item.sku} per order`);
++    }
+     if (existing) {
+       existing.quantity += quantity;
+     } else {
+diff --git a/test/cart.test.ts b/test/cart.test.ts
+--- a/test/cart.test.ts
++++ b/test/cart.test.ts
+@@ -33,6 +33,14 @@
+     expect(() => new Cart().addItem(mug, 0)).toThrow(RangeError);
+   });
+ 
++  it("caps the quantity per sku", () => {
++    const cart = new Cart();
++    cart.addItem(mug, 98);
++    expect(() => cart.addItem(mug, 2)).toThrow(RangeError);
++    cart.addItem(mug);
++    expect(cart.lines()[0].quantity).toBe(99);
++  });
++
+   it("computes totals with coupon and tax", () => {
+     const cart = new Cart();
+     cart.addItem(mug);

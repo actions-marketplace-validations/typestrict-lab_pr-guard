@@ -1,0 +1,8 @@
+description_matches: yes
+vulnerability: yes
+cwe: CWE-295
+breaking: no
+tests: missing
+type: Bug fix
+complexity: 1
+note: "Installs a trust-all X509TrustManager as the default for every environment, disabling certificate validation for production rate calls too."

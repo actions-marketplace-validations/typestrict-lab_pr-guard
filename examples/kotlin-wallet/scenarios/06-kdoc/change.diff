@@ -1,0 +1,46 @@
+diff --git a/src/main/kotlin/wallet/WalletService.kt b/src/main/kotlin/wallet/WalletService.kt
+--- a/src/main/kotlin/wallet/WalletService.kt
++++ b/src/main/kotlin/wallet/WalletService.kt
+@@ -2,10 +2,15 @@
+ 
+ import java.math.RoundingMode
+ 
++/**
++ * In-memory wallet store. Amounts are always `Long` cents; currency conversion uses
++ * [ExchangeRates] and rounds half to even.
++ */
+ class WalletService(private val rates: ExchangeRates) {
+     private val wallets = mutableMapOf<String, Wallet>()
+     private val pins = mutableMapOf<String, String>()
+ 
++    /** Opens an empty wallet. The PIN is stored hashed and must have 4 to 8 digits. */
+     fun open(id: String, ownerId: String, currency: String, pin: String): Wallet {
+         require(pin.length in 4..8 && pin.all(Char::isDigit)) { "PIN must have 4 to 8 digits" }
+         require(id !in wallets) { "wallet $id already exists" }
+@@ -15,8 +20,10 @@
+         return wallet
+     }
+ 
++    /** Returns the wallet or throws [NoSuchElementException]. */
+     fun get(id: String): Wallet = wallets[id] ?: throw NoSuchElementException("unknown wallet $id")
+ 
++    /** Adds a positive amount, for example after a card top-up has settled. */
+     fun deposit(id: String, amountCents: Long): Wallet {
+         require(amountCents > 0) { "deposit must be positive" }
+         val wallet = get(id)
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -3,4 +3,11 @@
+ Wallet domain for the payments backend: open wallets, deposit, and transfer
+ between wallets (with currency conversion through the treasury rate service).
+ 
+-Balances are stored as `Long` cents. Run the tests with `./gradlew test`.
++## Money rules
++
++- Balances are stored as `Long` cents, never floating point.
++- Cross-currency transfers multiply by the treasury rate and round half to
++  even (banker's rounding).
++- Only the wallet owner, with the wallet PIN, can move money out of it.
++
++Run the tests with `./gradlew test`.

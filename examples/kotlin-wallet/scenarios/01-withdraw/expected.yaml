@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: covers
+type: New feature
+complexity: 1
+note: "Clean change: withdraw reuses the same owner and PIN checks, validates the amount, and has tests."

@@ -1,0 +1,8 @@
+description_matches: no
+vulnerability: yes
+cwe: CWE-636
+breaking: no
+tests: missing
+type: Bug fix
+complexity: 0
+note: "Besides the log text, a request whose key cannot be derived is now passed to the handler instead of rejected (fail open), which the description does not mention."

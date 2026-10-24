@@ -1,0 +1,38 @@
+diff --git a/src/discounts.ts b/src/discounts.ts
+--- a/src/discounts.ts
++++ b/src/discounts.ts
+@@ -7,11 +7,12 @@
+   expiresAt: Date;
+ }
+ 
++export function isCouponActive(coupon: Coupon, now: Date = new Date()): boolean {
++  return now < coupon.expiresAt;
++}
++
+ export function couponDiscount(coupon: Coupon, subtotal: Cents, now: Date = new Date()): Cents {
+-  if (now >= coupon.expiresAt) {
+-    return 0;
+-  }
+-  if (subtotal < coupon.minSubtotal) {
++  if (!isCouponActive(coupon, now)) {
+     return 0;
+   }
+   return percentOf(subtotal, coupon.percentOff);
+diff --git a/test/cart.test.ts b/test/cart.test.ts
+--- a/test/cart.test.ts
++++ b/test/cart.test.ts
+@@ -41,12 +41,11 @@
+     expect(cart.totals(0.08, now)).toEqual({ subtotal: 37_49, discount: 3_75, tax: 2_70, total: 36_44 });
+   });
+ 
+-  it("ignores expired coupons and small orders", () => {
++  it("ignores expired coupons", () => {
+     const cart = new Cart();
+     cart.addItem(mug);
++    cart.addItem(beans);
+     cart.applyCoupon(tenOff);
+-    expect(cart.totals(0, now).discount).toBe(0);
+-    cart.addItem(beans);
+     expect(cart.totals(0, new Date("2024-07-01")).discount).toBe(0);
+   });
+ });

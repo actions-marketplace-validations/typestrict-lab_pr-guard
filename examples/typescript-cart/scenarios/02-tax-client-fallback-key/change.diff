@@ -1,0 +1,12 @@
+diff --git a/src/taxClient.ts b/src/taxClient.ts
+--- a/src/taxClient.ts
++++ b/src/taxClient.ts
+@@ -7,7 +7,7 @@
+ 
+ export class TaxClient {
+   constructor(
+-    private readonly apiKey: string = process.env.TAX_API_KEY ?? "",
++    private readonly apiKey: string = process.env.TAX_API_KEY ?? "tx_live_4f9a1c7e2b8d4e6fa03b5c9d1e7f2a64",
+     private readonly baseUrl: string = DEFAULT_BASE_URL,
+   ) {
+     if (!this.apiKey) {

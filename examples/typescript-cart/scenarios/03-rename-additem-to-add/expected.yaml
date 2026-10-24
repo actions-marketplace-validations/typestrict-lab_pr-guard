@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: yes
+tests: covers
+type: Refactoring without behavior change
+complexity: 1
+note: "Public method addItem removed and replaced by add with a different signature; acknowledged with a major bump, consumers break."

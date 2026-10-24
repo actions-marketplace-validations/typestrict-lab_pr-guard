@@ -1,0 +1,124 @@
+diff --git a/lib/post_serializer.rb b/lib/post_serializer.rb
+new file mode 100644
+--- /dev/null
++++ b/lib/post_serializer.rb
+@@ -0,0 +1,26 @@
++require "time"
++require_relative "post"
++
++# Turns posts into hashes for the API and for the JSON file, and back.
++module PostSerializer
++  module_function
++
++  def summary(post)
++    { id: post.id, title: post.title, author: post.author, published_at: post.published_at&.iso8601,
++      excerpt: post.excerpt }
++  end
++
++  def full(post)
++    summary(post).merge(body: post.body)
++  end
++
++  def storage(post)
++    summary(post).except(:excerpt).merge(body: post.body)
++  end
++
++  def from_storage(attrs)
++    published_at = attrs["published_at"] && Time.iso8601(attrs["published_at"])
++    Post.new(id: attrs["id"], title: attrs["title"], body: attrs["body"],
++             author: attrs["author"], published_at: published_at)
++  end
++end
+diff --git a/lib/post.rb b/lib/post.rb
+--- a/lib/post.rb
++++ b/lib/post.rb
+@@ -20,8 +20,4 @@
+ 
+     body[0, length].sub(/\s+\S*\z/, "") + "..."
+   end
+-
+-  def to_h
+-    { id: id, title: title, author: author, published_at: published_at&.iso8601, excerpt: excerpt }
+-  end
+ end
+diff --git a/lib/post_store.rb b/lib/post_store.rb
+--- a/lib/post_store.rb
++++ b/lib/post_store.rb
+@@ -1,5 +1,5 @@
+ require "json"
+-require_relative "post"
++require_relative "post_serializer"
+ 
+ # Keeps posts in a JSON file; good enough for a single-author blog.
+ class PostStore
+@@ -33,16 +33,11 @@
+   private
+ 
+   def read
+-    JSON.parse(File.read(@path)).to_h do |attrs|
+-      published_at = attrs["published_at"] && Time.iso8601(attrs["published_at"])
+-      post = Post.new(id: attrs["id"], title: attrs["title"], body: attrs["body"],
+-                      author: attrs["author"], published_at: published_at)
+-      [post.id, post]
+-    end
++    JSON.parse(File.read(@path)).map { |attrs| PostSerializer.from_storage(attrs) }.to_h { |p| [p.id, p] }
+   end
+ 
+   def write
+-    rows = @posts.values.map { |p| p.to_h.except(:excerpt).merge(body: p.body) }
++    rows = @posts.values.map { |p| PostSerializer.storage(p) }
+     File.write(@path, JSON.pretty_generate(rows))
+   end
+ end
+diff --git a/app.rb b/app.rb
+--- a/app.rb
++++ b/app.rb
+@@ -28,13 +28,13 @@
+   before { content_type :json }
+ 
+   get "/posts" do
+-    store.published.map(&:to_h).to_json
++    store.published.map { |p| PostSerializer.summary(p) }.to_json
+   end
+ 
+   get "/posts/:id" do
+     post = store.find(params[:id])
+     halt 404, { error: "not found" }.to_json unless post&.published?
+-    post.to_h.merge(body: post.body).to_json
++    PostSerializer.full(post).to_json
+   end
+ 
+   post "/admin/posts" do
+@@ -44,7 +44,7 @@
+     post = Post.new(id: SecureRandom.hex(4), title: attrs["title"], body: attrs["body"],
+                     author: attrs.fetch("author", "admin"), published_at: attrs["publish"] ? Time.now : nil)
+     status 201
+-    store.save(post).to_h.to_json
++    PostSerializer.summary(store.save(post)).to_json
+   end
+ 
+   delete "/admin/posts/:id" do
+diff --git a/test/post_serializer_test.rb b/test/post_serializer_test.rb
+new file mode 100644
+--- /dev/null
++++ b/test/post_serializer_test.rb
+@@ -0,0 +1,19 @@
++require "json"
++require "minitest/autorun"
++require_relative "../lib/post_serializer"
++
++class PostSerializerTest < Minitest::Test
++  def test_storage_round_trip
++    post = Post.new(id: "p1", title: "Hello", body: "Hello world", author: "ana",
++                    published_at: Time.utc(2024, 5, 1, 12))
++    copy = PostSerializer.from_storage(JSON.parse(PostSerializer.storage(post).to_json))
++    assert_equal [post.id, post.title, post.body, post.author, post.published_at],
++                 [copy.id, copy.title, copy.body, copy.author, copy.published_at]
++  end
++
++  def test_summary_has_excerpt_but_no_body
++    summary = PostSerializer.summary(Post.new(id: "p1", title: "Hello", body: "Hello world", author: "ana"))
++    assert_equal "Hello world", summary[:excerpt]
++    refute summary.key?(:body)
++  end
++end

@@ -1,0 +1,60 @@
+diff --git a/src/config.rs b/src/config.rs
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -17,6 +17,19 @@
+     pub database_url: String,
+ }
+ 
++impl Config {
++    /// Checks rules serde cannot express, such as ranges.
++    pub fn validate(&self) -> Result<(), String> {
++        if self.workers == 0 {
++            return Err("workers must be at least 1".to_string());
++        }
++        if self.request_timeout.is_zero() {
++            return Err("request_timeout must be greater than zero".to_string());
++        }
++        Ok(())
++    }
++}
++
+ fn default_listen_addr() -> String {
+     "127.0.0.1:8080".to_string()
+ }
+diff --git a/src/loader.rs b/src/loader.rs
+--- a/src/loader.rs
++++ b/src/loader.rs
+@@ -13,6 +13,8 @@
+     Io { path: PathBuf, source: std::io::Error },
+     #[error("cannot parse {path}: {source}")]
+     Parse { path: PathBuf, source: toml::de::Error },
++    #[error("invalid settings in {path}: {reason}")]
++    Invalid { path: PathBuf, reason: String },
+ }
+ 
+ /// Loads `<dir>/<profile>.toml`. Profile names may only contain ASCII letters, digits, `-` and `_`.
+@@ -22,5 +24,7 @@
+     }
+     let path = dir.join(format!("{profile}.toml"));
+     let text = std::fs::read_to_string(&path).map_err(|source| LoadError::Io { path: path.clone(), source })?;
+-    toml::from_str(&text).map_err(|source| LoadError::Parse { path, source })
++    let cfg: Config = toml::from_str(&text).map_err(|source| LoadError::Parse { path: path.clone(), source })?;
++    cfg.validate().map_err(|reason| LoadError::Invalid { path, reason })?;
++    Ok(cfg)
+ }
+diff --git a/tests/load.rs b/tests/load.rs
+--- a/tests/load.rs
++++ b/tests/load.rs
+@@ -49,3 +49,12 @@
+     write_profile(&dir, "dev", "database_url = \"x\"\nlisten = \"0.0.0.0:1\"\n");
+     assert!(matches!(load(&dir, "dev"), Err(LoadError::Parse { .. })));
+ }
++
++#[test]
++fn rejects_zero_workers_and_timeout() {
++    let dir = temp_dir("invalid");
++    write_profile(&dir, "workers", "database_url = \"x\"\nworkers = 0\n");
++    write_profile(&dir, "timeout", "database_url = \"x\"\nrequest_timeout = \"0s\"\n");
++    assert!(matches!(load(&dir, "workers"), Err(LoadError::Invalid { .. })));
++    assert!(matches!(load(&dir, "timeout"), Err(LoadError::Invalid { .. })));
++}

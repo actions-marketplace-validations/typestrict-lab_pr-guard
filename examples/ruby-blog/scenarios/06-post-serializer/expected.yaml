@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: covers
+type: Refactoring without behavior change
+complexity: 2
+note: "Clean refactor across four files plus a new test; same keys in API responses and on disk."

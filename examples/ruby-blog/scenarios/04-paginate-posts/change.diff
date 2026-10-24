@@ -1,0 +1,20 @@
+diff --git a/app.rb b/app.rb
+--- a/app.rb
++++ b/app.rb
+@@ -25,10 +25,15 @@
+     end
+   end
+ 
++  PER_PAGE = 10
++
+   before { content_type :json }
+ 
+   get "/posts" do
+-    store.published.map(&:to_h).to_json
++    posts = store.published
++    page = [params.fetch("page", 1).to_i, 1].max
++    headers "X-Total-Pages" => (posts.size / PER_PAGE).to_s
++    posts.each_slice(PER_PAGE).to_a.fetch(page - 1, []).map(&:to_h).to_json
+   end
+ 
+   get "/posts/:id" do

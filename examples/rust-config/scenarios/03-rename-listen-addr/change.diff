@@ -1,0 +1,62 @@
+diff --git a/src/config.rs b/src/config.rs
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -8,8 +8,8 @@
+ #[derive(Debug, Clone, PartialEq, Deserialize)]
+ #[serde(deny_unknown_fields)]
+ pub struct Config {
+-    #[serde(default = "default_listen_addr")]
+-    pub listen_addr: String,
++    #[serde(default = "default_bind")]
++    pub bind: String,
+     #[serde(default = "default_workers")]
+     pub workers: usize,
+     #[serde(default = "default_timeout", deserialize_with = "de_duration")]
+@@ -17,8 +17,8 @@
+     pub database_url: String,
+ }
+ 
+-fn default_listen_addr() -> String {
+-    "127.0.0.1:8080".to_string()
++fn default_bind() -> String {
++    "127.0.0.1:3000".to_string()
+ }
+ 
+ fn default_workers() -> usize {
+diff --git a/tests/load.rs b/tests/load.rs
+--- a/tests/load.rs
++++ b/tests/load.rs
+@@ -18,7 +18,7 @@
+     let dir = temp_dir("defaults");
+     write_profile(&dir, "dev", "database_url = \"postgres://localhost/dev\"\n");
+     let cfg = load(&dir, "dev").unwrap();
+-    assert_eq!(cfg.listen_addr, "127.0.0.1:8080");
++    assert_eq!(cfg.bind, "127.0.0.1:3000");
+     assert_eq!(cfg.workers, 4);
+     assert_eq!(cfg.request_timeout, Duration::from_secs(30));
+ }
+@@ -29,10 +29,10 @@
+     write_profile(
+         &dir,
+         "prod",
+-        "listen_addr = \"0.0.0.0:80\"\nworkers = 16\nrequest_timeout = \"500ms\"\ndatabase_url = \"postgres://db/prod\"\n",
++        "bind = \"0.0.0.0:80\"\nworkers = 16\nrequest_timeout = \"500ms\"\ndatabase_url = \"postgres://db/prod\"\n",
+     );
+     let cfg = load(&dir, "prod").unwrap();
+-    assert_eq!(cfg.listen_addr, "0.0.0.0:80");
++    assert_eq!(cfg.bind, "0.0.0.0:80");
+     assert_eq!(cfg.workers, 16);
+     assert_eq!(cfg.request_timeout, Duration::from_millis(500));
+ }
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -3,7 +3,7 @@
+ Loads service settings from `<dir>/<profile>.toml`.
+ 
+ ```toml
+-listen_addr = "0.0.0.0:8080"   # default 127.0.0.1:8080
++bind = "0.0.0.0:3000"          # default 127.0.0.1:3000
+ workers = 8                    # default 4
+ request_timeout = "10s"        # ms, s or m; default 30s
+ database_url = "postgres://db/app"

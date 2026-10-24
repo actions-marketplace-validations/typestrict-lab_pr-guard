@@ -1,0 +1,8 @@
+description_matches: yes
+vulnerability: yes
+cwe: CWE-502
+breaking: no
+tests: covers
+type: New feature
+complexity: 1
+note: "The prefs cookie is decoded with Marshal.load, so any visitor can send a crafted cookie and get remote code execution."

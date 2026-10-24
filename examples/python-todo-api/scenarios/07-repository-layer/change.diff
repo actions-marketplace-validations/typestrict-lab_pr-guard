@@ -1,0 +1,137 @@
+diff --git a/todo_api/app.py b/todo_api/app.py
+--- a/todo_api/app.py
++++ b/todo_api/app.py
+@@ -2,6 +2,7 @@
+ 
+ from . import db
+ from .auth import require_token
++from .repository import TodoRepository
+ 
+ PAGE_SIZE = 20
+ 
+@@ -28,11 +29,7 @@
+     @require_token
+     def list_todos():
+         page = max(request.args.get("page", 1, type=int), 1)
+-        offset = (page - 1) * PAGE_SIZE
+-        rows = db.get_db().execute(
+-            "SELECT * FROM todos WHERE owner = ? ORDER BY id LIMIT ? OFFSET ?",
+-            (g.user, PAGE_SIZE, offset),
+-        ).fetchall()
++        rows = _repo().page(PAGE_SIZE, (page - 1) * PAGE_SIZE)
+         return jsonify([to_json(r) for r in rows])
+ 
+     @app.post("/todos")
+@@ -42,11 +39,7 @@
+         title = str(payload.get("title", "")).strip()
+         if not title or len(title) > 200:
+             return jsonify(error="title must have 1 to 200 characters"), 400
+-        conn = db.get_db()
+-        cur = conn.execute("INSERT INTO todos (owner, title) VALUES (?, ?)", (g.user, title))
+-        conn.commit()
+-        row = conn.execute("SELECT * FROM todos WHERE id = ?", (cur.lastrowid,)).fetchone()
+-        return jsonify(to_json(row)), 201
++        return jsonify(to_json(_repo().create(title))), 201
+ 
+     @app.patch("/todos/<int:todo_id>")
+     @require_token
+@@ -54,27 +47,24 @@
+         row = _owned(todo_id)
+         payload = request.get_json(silent=True) or {}
+         done = bool(payload.get("done", row["done"]))
+-        conn = db.get_db()
+-        conn.execute("UPDATE todos SET done = ? WHERE id = ?", (int(done), todo_id))
+-        conn.commit()
+-        return jsonify(to_json(_owned(todo_id)))
++        return jsonify(to_json(_repo().set_done(todo_id, done)))
+ 
+     @app.delete("/todos/<int:todo_id>")
+     @require_token
+     def delete_todo(todo_id):
+-        _owned(todo_id)
+-        conn = db.get_db()
+-        conn.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
+-        conn.commit()
++        if not _repo().delete(todo_id):
++            abort(404)
+         return "", 204
+ 
+     return app
+ 
+ 
++def _repo():
++    return TodoRepository(g.user)
++
++
+ def _owned(todo_id):
+-    row = db.get_db().execute(
+-        "SELECT * FROM todos WHERE id = ? AND owner = ?", (todo_id, g.user)
+-    ).fetchone()
++    row = _repo().get(todo_id)
+     if row is None:
+         abort(404)
+     return row
+diff --git a/todo_api/repository.py b/todo_api/repository.py
+new file mode 100644
+--- /dev/null
++++ b/todo_api/repository.py
+@@ -0,0 +1,41 @@
++from dataclasses import dataclass
++
++from . import db
++
++
++@dataclass
++class TodoRepository:
++    """All SQL for the todos table, scoped to a single owner."""
++
++    owner: str
++
++    def page(self, limit, offset):
++        return db.get_db().execute(
++            "SELECT * FROM todos WHERE owner = ? ORDER BY id LIMIT ? OFFSET ?",
++            (self.owner, limit, offset),
++        ).fetchall()
++
++    def get(self, todo_id):
++        return db.get_db().execute(
++            "SELECT * FROM todos WHERE id = ? AND owner = ?", (todo_id, self.owner)
++        ).fetchone()
++
++    def create(self, title):
++        conn = db.get_db()
++        cur = conn.execute("INSERT INTO todos (owner, title) VALUES (?, ?)", (self.owner, title))
++        conn.commit()
++        return self.get(cur.lastrowid)
++
++    def set_done(self, todo_id, done):
++        conn = db.get_db()
++        conn.execute(
++            "UPDATE todos SET done = ? WHERE id = ? AND owner = ?", (int(done), todo_id, self.owner)
++        )
++        conn.commit()
++        return self.get(todo_id)
++
++    def delete(self, todo_id):
++        conn = db.get_db()
++        cur = conn.execute("DELETE FROM todos WHERE id = ? AND owner = ?", (todo_id, self.owner))
++        conn.commit()
++        return cur.rowcount > 0
+diff --git a/tests/test_repository.py b/tests/test_repository.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_repository.py
+@@ -0,0 +1,13 @@
++from todo_api import create_app
++from todo_api.repository import TodoRepository
++
++
++def test_repository_is_scoped_to_owner(tmp_path):
++    app = create_app({"DATABASE": str(tmp_path / "repo.sqlite3")})
++    with app.app_context():
++        alice, bob = TodoRepository("alice"), TodoRepository("bob")
++        todo = alice.create("Write report")
++        assert bob.get(todo["id"]) is None
++        assert bob.delete(todo["id"]) is False
++        assert alice.set_done(todo["id"], True)["done"] == 1
++        assert [r["title"] for r in alice.page(10, 0)] == ["Write report"]

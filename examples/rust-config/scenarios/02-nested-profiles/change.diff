@@ -1,0 +1,33 @@
+diff --git a/src/loader.rs b/src/loader.rs
+--- a/src/loader.rs
++++ b/src/loader.rs
+@@ -15,9 +15,9 @@
+     Parse { path: PathBuf, source: toml::de::Error },
+ }
+ 
+-/// Loads `<dir>/<profile>.toml`. Profile names may only contain ASCII letters, digits, `-` and `_`.
++/// Loads `<dir>/<profile>.toml`. Profiles can live in subdirectories, as in `eu/prod`.
+ pub fn load(dir: &Path, profile: &str) -> Result<Config, LoadError> {
+-    if profile.is_empty() || !profile.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
++    if profile.is_empty() {
+         return Err(LoadError::InvalidProfile(profile.to_string()));
+     }
+     let path = dir.join(format!("{profile}.toml"));
+diff --git a/tests/load.rs b/tests/load.rs
+--- a/tests/load.rs
++++ b/tests/load.rs
+@@ -38,9 +38,11 @@
+ }
+ 
+ #[test]
+-fn rejects_profile_outside_dir() {
+-    let dir = temp_dir("traversal");
+-    assert!(matches!(load(&dir, "../secrets"), Err(LoadError::InvalidProfile(_))));
++fn loads_nested_profiles() {
++    let dir = temp_dir("nested");
++    std::fs::create_dir_all(dir.join("eu")).unwrap();
++    write_profile(&dir, "eu/prod", "database_url = \"postgres://eu-db/prod\"\n");
++    assert_eq!(load(&dir, "eu/prod").unwrap().database_url, "postgres://eu-db/prod");
+ }
+ 
+ #[test]

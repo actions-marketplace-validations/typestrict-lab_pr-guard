@@ -1,0 +1,7 @@
+description_matches: no
+vulnerability: no
+breaking: no
+tests: missing
+type: Refactoring without behavior change
+complexity: 1
+note: "Claims no behavior change but the minSubtotal check is dropped, so coupons apply to any order; the test asserting it is quietly removed."

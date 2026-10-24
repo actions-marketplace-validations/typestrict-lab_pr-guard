@@ -1,0 +1,8 @@
+description_matches: yes
+vulnerability: yes
+cwe: CWE-348
+breaking: no
+tests: covers
+type: Bug fix
+complexity: 1
+note: "X-Forwarded-For is trusted from any client with no trusted proxy list, so anyone can send a fresh value per request and bypass the limit."

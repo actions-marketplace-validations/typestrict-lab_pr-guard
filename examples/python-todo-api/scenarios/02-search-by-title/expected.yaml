@@ -1,0 +1,8 @@
+description_matches: yes
+vulnerability: yes
+cwe: CWE-89
+breaking: no
+tests: covers
+type: New feature
+complexity: 1
+note: "The search term is interpolated into the SQL with an f-string instead of a bound parameter (SQL injection)."

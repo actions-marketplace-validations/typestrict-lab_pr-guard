@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: missing
+type: Refactoring without behavior change
+complexity: 0
+note: "Money converted with Double and truncated by toLong() instead of BigDecimal with HALF_EVEN, so credited amounts can lose a cent; no test for a rounding case."

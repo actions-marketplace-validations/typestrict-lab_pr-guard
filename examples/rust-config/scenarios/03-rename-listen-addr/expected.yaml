@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: yes
+tests: covers
+type: Refactoring without behavior change
+complexity: 1
+note: "Config key listen_addr renamed to bind with deny_unknown_fields and no alias, and the default port changes: existing config files fail to load."

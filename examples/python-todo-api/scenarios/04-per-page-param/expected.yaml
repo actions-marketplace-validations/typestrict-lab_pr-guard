@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: missing
+type: New feature
+complexity: 1
+note: "The offset still uses PAGE_SIZE instead of per_page, so with per_page=50 page 2 repeats items 21 to 50; per_page <= 0 is not rejected (LIMIT -1 means no limit in SQLite); no tests."

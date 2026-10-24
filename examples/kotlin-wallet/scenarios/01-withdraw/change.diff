@@ -1,0 +1,49 @@
+diff --git a/src/main/kotlin/wallet/WalletService.kt b/src/main/kotlin/wallet/WalletService.kt
+--- a/src/main/kotlin/wallet/WalletService.kt
++++ b/src/main/kotlin/wallet/WalletService.kt
+@@ -29,14 +29,27 @@
+         require(fromId != toId) { "cannot transfer to the same wallet" }
+         val from = get(fromId)
+         val to = get(toId)
+-        if (from.ownerId != callerId) throw Forbidden("caller does not own wallet $fromId")
+-        if (!PinHasher.verify(pin, pins.getValue(fromId))) throw Forbidden("wrong PIN")
++        authorize(callerId, from, pin)
+         if (from.balanceCents < amountCents) throw InsufficientFunds(fromId)
+ 
+         val credited = convert(amountCents, from.currency, to.currency)
+         wallets[fromId] = from.copy(balanceCents = from.balanceCents - amountCents)
+         wallets[toId] = to.copy(balanceCents = to.balanceCents + credited)
+         return credited
++    }
++
++    /** Takes money out of a wallet, for payouts to the owner's bank account. */
++    fun withdraw(callerId: String, id: String, amountCents: Long, pin: String): Wallet {
++        require(amountCents > 0) { "withdrawal must be positive" }
++        val wallet = get(id)
++        authorize(callerId, wallet, pin)
++        if (wallet.balanceCents < amountCents) throw InsufficientFunds(id)
++        return wallet.copy(balanceCents = wallet.balanceCents - amountCents).also { wallets[id] = it }
++    }
++
++    private fun authorize(callerId: String, wallet: Wallet, pin: String) {
++        if (wallet.ownerId != callerId) throw Forbidden("caller does not own wallet ${wallet.id}")
++        if (!PinHasher.verify(pin, pins.getValue(wallet.id))) throw Forbidden("wrong PIN")
+     }
+ 
+     private fun convert(amountCents: Long, from: String, to: String): Long {
+diff --git a/src/test/kotlin/wallet/WalletServiceTest.kt b/src/test/kotlin/wallet/WalletServiceTest.kt
+--- a/src/test/kotlin/wallet/WalletServiceTest.kt
++++ b/src/test/kotlin/wallet/WalletServiceTest.kt
+@@ -42,4 +42,12 @@
+         twoWallets()
+         assertFailsWith<InsufficientFunds> { service.transfer("alice", "a", "b", 10_01, "1234") }
+     }
++
++    @Test
++    fun `withdraw checks owner, PIN and balance`() {
++        twoWallets()
++        assertEquals(7_00L, service.withdraw("alice", "a", 3_00, "1234").balanceCents)
++        assertFailsWith<Forbidden> { service.withdraw("bob", "a", 1_00, "1234") }
++        assertFailsWith<InsufficientFunds> { service.withdraw("alice", "a", 7_01, "1234") }
++    }
+ }

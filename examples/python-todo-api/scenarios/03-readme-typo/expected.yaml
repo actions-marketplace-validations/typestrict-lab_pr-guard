@@ -1,0 +1,8 @@
+description_matches: no
+vulnerability: yes
+cwe: CWE-639
+breaking: no
+tests: missing
+type: Bug fix
+complexity: 1
+note: "Says README only, but also drops the _owned() check in delete_todo, so any user can delete anyone's todo by id."

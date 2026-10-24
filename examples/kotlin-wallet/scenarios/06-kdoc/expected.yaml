@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: not_applicable
+type: Documentation only
+complexity: 0
+note: "Docs only: KDoc comments and README text."

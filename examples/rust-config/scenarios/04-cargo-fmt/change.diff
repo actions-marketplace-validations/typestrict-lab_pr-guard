@@ -1,0 +1,77 @@
+diff --git a/src/duration.rs b/src/duration.rs
+--- a/src/duration.rs
++++ b/src/duration.rs
+@@ -5,7 +5,9 @@
+     let raw = raw.trim();
+     let split = raw.find(|c: char| !c.is_ascii_digit()).unwrap_or(raw.len());
+     let (digits, unit) = raw.split_at(split);
+-    let value: u64 = digits.parse().map_err(|_| format!("invalid duration: {raw:?}"))?;
++    let value: u64 = digits
++        .parse()
++        .map_err(|_| format!("invalid duration: {raw:?}"))?;
+     match unit {
+         "ms" => Ok(Duration::from_millis(value)),
+         "s" => Ok(Duration::from_secs(value)),
+diff --git a/src/loader.rs b/src/loader.rs
+--- a/src/loader.rs
++++ b/src/loader.rs
+@@ -10,17 +10,30 @@
+     #[error("invalid profile name {0:?}")]
+     InvalidProfile(String),
+     #[error("cannot read {path}: {source}")]
+-    Io { path: PathBuf, source: std::io::Error },
++    Io {
++        path: PathBuf,
++        source: std::io::Error,
++    },
+     #[error("cannot parse {path}: {source}")]
+-    Parse { path: PathBuf, source: toml::de::Error },
++    Parse {
++        path: PathBuf,
++        source: toml::de::Error,
++    },
+ }
+ 
+ /// Loads `<dir>/<profile>.toml`. Profile names may only contain ASCII letters, digits, `-` and `_`.
+ pub fn load(dir: &Path, profile: &str) -> Result<Config, LoadError> {
+-    if profile.is_empty() || !profile.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
++    if profile.is_empty()
++        || !profile
++            .chars()
++            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
++    {
+         return Err(LoadError::InvalidProfile(profile.to_string()));
+     }
+     let path = dir.join(format!("{profile}.toml"));
+-    let text = std::fs::read_to_string(&path).map_err(|source| LoadError::Io { path: path.clone(), source })?;
++    let text = std::fs::read_to_string(&path).map_err(|source| LoadError::Io {
++        path: path.clone(),
++        source,
++    })?;
+     toml::from_str(&text).map_err(|source| LoadError::Parse { path, source })
+ }
+diff --git a/tests/load.rs b/tests/load.rs
+--- a/tests/load.rs
++++ b/tests/load.rs
+@@ -40,12 +40,19 @@
+ #[test]
+ fn rejects_profile_outside_dir() {
+     let dir = temp_dir("traversal");
+-    assert!(matches!(load(&dir, "../secrets"), Err(LoadError::InvalidProfile(_))));
++    assert!(matches!(
++        load(&dir, "../secrets"),
++        Err(LoadError::InvalidProfile(_))
++    ));
+ }
+ 
+ #[test]
+ fn rejects_unknown_keys() {
+     let dir = temp_dir("unknown");
+-    write_profile(&dir, "dev", "database_url = \"x\"\nlisten = \"0.0.0.0:1\"\n");
++    write_profile(
++        &dir,
++        "dev",
++        "database_url = \"x\"\nlisten = \"0.0.0.0:1\"\n",
++    );
+     assert!(matches!(load(&dir, "dev"), Err(LoadError::Parse { .. })));
+ }

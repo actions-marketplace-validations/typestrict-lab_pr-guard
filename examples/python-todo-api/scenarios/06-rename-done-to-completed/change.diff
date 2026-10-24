@@ -1,0 +1,53 @@
+diff --git a/todo_api/app.py b/todo_api/app.py
+--- a/todo_api/app.py
++++ b/todo_api/app.py
+@@ -10,7 +10,7 @@
+     return {
+         "id": row["id"],
+         "title": row["title"],
+-        "done": bool(row["done"]),
++        "completed": bool(row["done"]),
+         "created_at": row["created_at"],
+     }
+ 
+@@ -53,7 +53,7 @@
+     def update_todo(todo_id):
+         row = _owned(todo_id)
+         payload = request.get_json(silent=True) or {}
+-        done = bool(payload.get("done", row["done"]))
++        done = bool(payload.get("completed", row["done"]))
+         conn = db.get_db()
+         conn.execute("UPDATE todos SET done = ? WHERE id = ?", (int(done), todo_id))
+         conn.commit()
+diff --git a/tests/test_app.py b/tests/test_app.py
+--- a/tests/test_app.py
++++ b/tests/test_app.py
+@@ -22,7 +22,7 @@
+ def test_create_and_list(client):
+     resp = client.post("/todos", json={"title": "Buy milk"}, headers=auth("alice"))
+     assert resp.status_code == 201
+-    assert resp.get_json()["done"] is False
++    assert resp.get_json()["completed"] is False
+     titles = [t["title"] for t in client.get("/todos", headers=auth("alice")).get_json()]
+     assert titles == ["Buy milk"]
+ 
+@@ -40,5 +40,5 @@
+ 
+ def test_mark_done(client):
+     todo = client.post("/todos", json={"title": "Ship it"}, headers=auth("alice")).get_json()
+-    resp = client.patch(f"/todos/{todo['id']}", json={"done": True}, headers=auth("alice"))
+-    assert resp.get_json()["done"] is True
++    resp = client.patch(f"/todos/{todo['id']}", json={"completed": True}, headers=auth("alice"))
++    assert resp.get_json()["completed"] is True
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -14,7 +14,7 @@
+ 
+ - `GET /todos?page=N` lists your items, 20 per page
+ - `POST /todos` with `{"title": "..."}` creates an item
+-- `PATCH /todos/<id>` with `{"done": true}` updates an item
++- `PATCH /todos/<id>` with `{"completed": true}` updates an item
+ - `DELETE /todos/<id>` removes an item
+ 
+ ## Tests

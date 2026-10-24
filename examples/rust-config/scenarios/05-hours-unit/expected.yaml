@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: missing
+type: New feature
+complexity: 0
+note: "The new h unit multiplies by 60 instead of 3600, so 6h means six minutes; the existing unit test is not extended."

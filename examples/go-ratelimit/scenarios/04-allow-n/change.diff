@@ -1,0 +1,23 @@
+diff --git a/limiter.go b/limiter.go
+--- a/limiter.go
++++ b/limiter.go
+@@ -39,6 +39,19 @@
+ 	return true
+ }
+ 
++// AllowN reports whether a request costing n tokens may proceed now, consuming them if so.
++func (l *Limiter) AllowN(key string, n int) bool {
++	l.mu.Lock()
++	defer l.mu.Unlock()
++
++	b := l.refill(key)
++	if b.tokens < float64(n-1) {
++		return false
++	}
++	b.tokens -= float64(n)
++	return true
++}
++
+ // refill returns the bucket for key with the tokens earned since its last use. Callers hold l.mu.
+ func (l *Limiter) refill(key string) *bucket {
+ 	now := l.now()

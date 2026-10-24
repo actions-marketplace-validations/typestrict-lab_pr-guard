@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: covers
+type: New feature
+complexity: 0
+note: "Clean change: optional filter on already published posts, with a test."

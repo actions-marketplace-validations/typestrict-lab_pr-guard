@@ -1,0 +1,108 @@
+diff --git a/.prettierrc b/.prettierrc
+new file mode 100644
+--- /dev/null
++++ b/.prettierrc
+@@ -0,0 +1,4 @@
++{
++  "printWidth": 80,
++  "trailingComma": "all"
++}
+diff --git a/src/cart.ts b/src/cart.ts
+--- a/src/cart.ts
++++ b/src/cart.ts
+@@ -44,8 +44,13 @@
+   }
+ 
+   totals(taxRate: number, now: Date = new Date()): Totals {
+-    const subtotal = this.lines().reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
+-    const discount = this.coupon ? couponDiscount(this.coupon, subtotal, now) : 0;
++    const subtotal = this.lines().reduce(
++      (sum, line) => sum + line.unitPrice * line.quantity,
++      0,
++    );
++    const discount = this.coupon
++      ? couponDiscount(this.coupon, subtotal, now)
++      : 0;
+     const tax = Math.round((subtotal - discount) * taxRate);
+     return { subtotal, discount, tax, total: subtotal - discount + tax };
+   }
+diff --git a/src/discounts.ts b/src/discounts.ts
+--- a/src/discounts.ts
++++ b/src/discounts.ts
+@@ -7,7 +7,11 @@
+   expiresAt: Date;
+ }
+ 
+-export function couponDiscount(coupon: Coupon, subtotal: Cents, now: Date = new Date()): Cents {
++export function couponDiscount(
++  coupon: Coupon,
++  subtotal: Cents,
++  now: Date = new Date(),
++): Cents {
+   if (now >= coupon.expiresAt) {
+     return 0;
+   }
+diff --git a/src/money.ts b/src/money.ts
+--- a/src/money.ts
++++ b/src/money.ts
+@@ -11,7 +11,9 @@
+ }
+ 
+ export function formatCents(cents: Cents, currency = "USD"): string {
+-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
++  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
++    cents / 100,
++  );
+ }
+ 
+ export function percentOf(cents: Cents, percent: number): Cents {
+diff --git a/src/taxClient.ts b/src/taxClient.ts
+--- a/src/taxClient.ts
++++ b/src/taxClient.ts
+@@ -16,9 +16,12 @@
+   }
+ 
+   async rateFor(postalCode: string): Promise<TaxQuote> {
+-    const response = await fetch(`${this.baseUrl}/rates/${encodeURIComponent(postalCode)}`, {
+-      headers: { Authorization: `Bearer ${this.apiKey}` },
+-    });
++    const response = await fetch(
++      `${this.baseUrl}/rates/${encodeURIComponent(postalCode)}`,
++      {
++        headers: { Authorization: `Bearer ${this.apiKey}` },
++      },
++    );
+     if (!response.ok) {
+       throw new Error(`tax service returned ${response.status}`);
+     }
+diff --git a/test/cart.test.ts b/test/cart.test.ts
+--- a/test/cart.test.ts
++++ b/test/cart.test.ts
+@@ -7,7 +7,12 @@
+ const mug = { sku: "MUG-01", name: "Coffee mug", unitPrice: 12_50 };
+ const beans = { sku: "BEAN-1K", name: "Beans 1kg", unitPrice: 24_99 };
+ const now = new Date("2024-05-01T12:00:00Z");
+-const tenOff: Coupon = { code: "TEN", percentOff: 10, minSubtotal: 30_00, expiresAt: new Date("2024-06-01") };
++const tenOff: Coupon = {
++  code: "TEN",
++  percentOff: 10,
++  minSubtotal: 30_00,
++  expiresAt: new Date("2024-06-01"),
++};
+ 
+ describe("money", () => {
+   it("parses amounts into cents", () => {
+@@ -38,7 +43,12 @@
+     cart.addItem(mug);
+     cart.addItem(beans);
+     cart.applyCoupon(tenOff);
+-    expect(cart.totals(0.08, now)).toEqual({ subtotal: 37_49, discount: 3_75, tax: 2_70, total: 36_44 });
++    expect(cart.totals(0.08, now)).toEqual({
++      subtotal: 37_49,
++      discount: 3_75,
++      tax: 2_70,
++      total: 36_44,
++    });
+   });
+ 
+   it("ignores expired coupons and small orders", () => {

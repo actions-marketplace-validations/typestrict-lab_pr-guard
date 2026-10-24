@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: not_applicable
+type: Formatting or style only
+complexity: 1
+note: "Formatting only: prettier config plus rewrapped lines, no logic change."

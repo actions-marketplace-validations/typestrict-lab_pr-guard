@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: missing
+type: New feature
+complexity: 1
+note: "Money parsed with parseFloat and Math.floor(value * 100): 0.29 becomes 28 cents; negatives and trailing garbage like 12abc are now accepted; no tests."

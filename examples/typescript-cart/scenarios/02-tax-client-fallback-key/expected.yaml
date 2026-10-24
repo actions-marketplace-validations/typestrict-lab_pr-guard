@@ -1,0 +1,8 @@
+description_matches: yes
+vulnerability: yes
+cwe: CWE-798
+breaking: no
+tests: missing
+type: Bug fix
+complexity: 0
+note: "A live API key is hardcoded as the fallback for TAX_API_KEY and committed to the repo."

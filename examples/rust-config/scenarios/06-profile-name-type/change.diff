@@ -1,0 +1,122 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -3,6 +3,7 @@
+ pub mod config;
+ mod duration;
+ pub mod loader;
++pub mod profile;
+ 
+ pub use config::Config;
+ pub use loader::{load, LoadError};
+diff --git a/src/profile.rs b/src/profile.rs
+new file mode 100644
+--- /dev/null
++++ b/src/profile.rs
+@@ -0,0 +1,29 @@
++/// A validated profile name: ASCII letters, digits, `-` and `_` only, so the
++/// file it names always stays inside the config directory.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct ProfileName(String);
++
++impl ProfileName {
++    pub fn parse(raw: &str) -> Option<Self> {
++        let valid = !raw.is_empty()
++            && raw.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
++        valid.then(|| Self(raw.to_string()))
++    }
++
++    pub fn file_name(&self) -> String {
++        format!("{}.toml", self.0)
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::ProfileName;
++
++    #[test]
++    fn accepts_simple_names_only() {
++        assert_eq!(ProfileName::parse("prod-eu_1").unwrap().file_name(), "prod-eu_1.toml");
++        for bad in ["", "../prod", "a/b", "prod.toml", "dev "] {
++            assert!(ProfileName::parse(bad).is_none(), "{bad:?} should be rejected");
++        }
++    }
++}
+diff --git a/src/loader.rs b/src/loader.rs
+--- a/src/loader.rs
++++ b/src/loader.rs
+@@ -2,6 +2,7 @@
+ 
+ use thiserror::Error;
+ 
++use crate::profile::ProfileName;
+ use crate::Config;
+ 
+ #[derive(Debug, Error)]
+@@ -17,10 +18,8 @@
+ 
+ /// Loads `<dir>/<profile>.toml`. Profile names may only contain ASCII letters, digits, `-` and `_`.
+ pub fn load(dir: &Path, profile: &str) -> Result<Config, LoadError> {
+-    if profile.is_empty() || !profile.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+-        return Err(LoadError::InvalidProfile(profile.to_string()));
+-    }
+-    let path = dir.join(format!("{profile}.toml"));
++    let profile = ProfileName::parse(profile).ok_or_else(|| LoadError::InvalidProfile(profile.to_string()))?;
++    let path = dir.join(profile.file_name());
+     let text = std::fs::read_to_string(&path).map_err(|source| LoadError::Io { path: path.clone(), source })?;
+     toml::from_str(&text).map_err(|source| LoadError::Parse { path, source })
+ }
+diff --git a/src/config.rs b/src/config.rs
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -1,8 +1,6 @@
+ use std::time::Duration;
+ 
+ use serde::Deserialize;
+-
+-use crate::duration::parse_duration;
+ 
+ /// Service settings read from `<config dir>/<profile>.toml`.
+ #[derive(Debug, Clone, PartialEq, Deserialize)]
+@@ -12,7 +10,7 @@
+     pub listen_addr: String,
+     #[serde(default = "default_workers")]
+     pub workers: usize,
+-    #[serde(default = "default_timeout", deserialize_with = "de_duration")]
++    #[serde(default = "default_timeout", deserialize_with = "crate::duration::deserialize")]
+     pub request_timeout: Duration,
+     pub database_url: String,
+ }
+@@ -28,8 +26,3 @@
+ fn default_timeout() -> Duration {
+     Duration::from_secs(30)
+ }
+-
+-fn de_duration<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Duration, D::Error> {
+-    let raw = String::deserialize(d)?;
+-    parse_duration(&raw).map_err(serde::de::Error::custom)
+-}
+diff --git a/src/duration.rs b/src/duration.rs
+--- a/src/duration.rs
++++ b/src/duration.rs
+@@ -1,4 +1,6 @@
+ use std::time::Duration;
++
++use serde::Deserialize;
+ 
+ /// Parses durations such as `250ms`, `30s` or `5m`.
+ pub fn parse_duration(raw: &str) -> Result<Duration, String> {
+@@ -14,6 +16,12 @@
+     }
+ }
+ 
++/// Serde adapter for duration strings, for `#[serde(deserialize_with = ...)]`.
++pub(crate) fn deserialize<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Duration, D::Error> {
++    let raw = String::deserialize(d)?;
++    parse_duration(&raw).map_err(serde::de::Error::custom)
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;

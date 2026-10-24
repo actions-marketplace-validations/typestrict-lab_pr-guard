@@ -1,0 +1,57 @@
+diff --git a/todo_api/app.py b/todo_api/app.py
+--- a/todo_api/app.py
++++ b/todo_api/app.py
+@@ -29,9 +29,17 @@
+     def list_todos():
+         page = max(request.args.get("page", 1, type=int), 1)
+         offset = (page - 1) * PAGE_SIZE
++        query = "SELECT * FROM todos WHERE owner = ?"
++        params = [g.user]
++        done = request.args.get("done")
++        if done is not None:
++            if done not in ("true", "false"):
++                return jsonify(error="done must be true or false"), 400
++            query += " AND done = ?"
++            params.append(int(done == "true"))
+         rows = db.get_db().execute(
+-            "SELECT * FROM todos WHERE owner = ? ORDER BY id LIMIT ? OFFSET ?",
+-            (g.user, PAGE_SIZE, offset),
++            query + " ORDER BY id LIMIT ? OFFSET ?",
++            (*params, PAGE_SIZE, offset),
+         ).fetchall()
+         return jsonify([to_json(r) for r in rows])
+ 
+diff --git a/tests/test_app.py b/tests/test_app.py
+--- a/tests/test_app.py
++++ b/tests/test_app.py
+@@ -42,3 +42,18 @@
+     todo = client.post("/todos", json={"title": "Ship it"}, headers=auth("alice")).get_json()
+     resp = client.patch(f"/todos/{todo['id']}", json={"done": True}, headers=auth("alice"))
+     assert resp.get_json()["done"] is True
++
++
++def test_filter_by_done(client):
++    first = client.post("/todos", json={"title": "Open"}, headers=auth("alice")).get_json()
++    second = client.post("/todos", json={"title": "Finished"}, headers=auth("alice")).get_json()
++    client.patch(f"/todos/{second['id']}", json={"done": True}, headers=auth("alice"))
++
++    open_items = client.get("/todos?done=false", headers=auth("alice")).get_json()
++    finished = client.get("/todos?done=true", headers=auth("alice")).get_json()
++    assert [t["id"] for t in open_items] == [first["id"]]
++    assert [t["id"] for t in finished] == [second["id"]]
++
++
++def test_filter_rejects_unknown_value(client):
++    assert client.get("/todos?done=maybe", headers=auth("alice")).status_code == 400
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -12,7 +12,7 @@
+ 
+ ## Endpoints
+ 
+-- `GET /todos?page=N` lists your items, 20 per page
++- `GET /todos?page=N` lists your items, 20 per page; add `done=true` or `done=false` to filter
+ - `POST /todos` with `{"title": "..."}` creates an item
+ - `PATCH /todos/<id>` with `{"done": true}` updates an item
+ - `DELETE /todos/<id>` removes an item

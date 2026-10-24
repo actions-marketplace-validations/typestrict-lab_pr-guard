@@ -1,0 +1,21 @@
+diff --git a/src/main/kotlin/wallet/WalletService.kt b/src/main/kotlin/wallet/WalletService.kt
+--- a/src/main/kotlin/wallet/WalletService.kt
++++ b/src/main/kotlin/wallet/WalletService.kt
+@@ -1,6 +1,4 @@
+ package wallet
+-
+-import java.math.RoundingMode
+ 
+ class WalletService(private val rates: ExchangeRates) {
+     private val wallets = mutableMapOf<String, Wallet>()
+@@ -41,9 +39,6 @@
+ 
+     private fun convert(amountCents: Long, from: String, to: String): Long {
+         if (from == to) return amountCents
+-        return amountCents.toBigDecimal()
+-            .multiply(rates.rate(from, to))
+-            .setScale(0, RoundingMode.HALF_EVEN)
+-            .longValueExact()
++        return (amountCents * rates.rate(from, to).toDouble()).toLong()
+     }
+ }

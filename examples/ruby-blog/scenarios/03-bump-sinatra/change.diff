@@ -1,0 +1,38 @@
+diff --git a/Gemfile b/Gemfile
+--- a/Gemfile
++++ b/Gemfile
+@@ -1,6 +1,6 @@
+ source "https://rubygems.org"
+ 
+-gem "sinatra", "~> 4.0"
++gem "sinatra", "~> 4.1"
+ gem "rackup", "~> 2.1"
+ 
+ group :test do
+diff --git a/app.rb b/app.rb
+--- a/app.rb
++++ b/app.rb
+@@ -26,6 +26,7 @@
+   end
+ 
+   before { content_type :json }
++  before("/admin/posts") { require_admin! }
+ 
+   get "/posts" do
+     store.published.map(&:to_h).to_json
+@@ -38,7 +39,6 @@
+   end
+ 
+   post "/admin/posts" do
+-    require_admin!
+     attrs = json_body
+     halt 422, { error: "title and body are required" }.to_json if attrs["title"].to_s.empty? || attrs["body"].to_s.empty?
+     post = Post.new(id: SecureRandom.hex(4), title: attrs["title"], body: attrs["body"],
+@@ -48,7 +48,6 @@
+   end
+ 
+   delete "/admin/posts/:id" do
+-    require_admin!
+     halt 404, { error: "not found" }.to_json unless store.delete(params[:id])
+     status 204
+     ""

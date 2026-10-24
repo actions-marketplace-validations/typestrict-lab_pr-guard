@@ -1,0 +1,55 @@
+diff --git a/app.rb b/app.rb
+--- a/app.rb
++++ b/app.rb
+@@ -1,4 +1,5 @@
+ require "sinatra/base"
++require "base64"
+ require "json"
+ require "securerandom"
+ require_relative "lib/post_store"
+@@ -18,6 +19,11 @@
+       halt 401, { error: "unauthorized" }.to_json unless expected && Rack::Utils.secure_compare(token, expected)
+     end
+ 
++    def preferences
++      raw = request.cookies["prefs"]
++      raw ? Marshal.load(Base64.urlsafe_decode64(raw)) : { "order" => "newest" }
++    end
++
+     def json_body
+       JSON.parse(request.body.read)
+     rescue JSON::ParserError
+@@ -28,7 +34,15 @@
+   before { content_type :json }
+ 
+   get "/posts" do
+-    store.published.map(&:to_h).to_json
++    posts = store.published
++    posts = posts.reverse if preferences["order"] == "oldest"
++    posts.map(&:to_h).to_json
++  end
++
++  put "/preferences" do
++    prefs = preferences.merge(json_body.slice("order"))
++    response.set_cookie("prefs", value: Base64.urlsafe_encode64(Marshal.dump(prefs)), path: "/", httponly: true)
++    prefs.to_json
+   end
+ 
+   get "/posts/:id" do
+diff --git a/test/app_test.rb b/test/app_test.rb
+--- a/test/app_test.rb
++++ b/test/app_test.rb
+@@ -49,4 +49,13 @@
+     post = Post.new(id: "1", title: "t", body: "word " * 50, author: "a")
+     assert_equal "word word...", post.excerpt(12)
+   end
++
++  def test_oldest_first_preference
++    create("First")
++    create("Second")
++    send_json :put, "/preferences", { order: "oldest" }
++    get "/posts"
++    titles = JSON.parse(last_response.body).map { |p| p["title"] }
++    assert_operator titles.index("First"), :<, titles.index("Second")
++  end
+ end

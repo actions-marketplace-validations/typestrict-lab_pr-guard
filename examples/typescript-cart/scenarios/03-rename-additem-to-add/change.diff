@@ -1,0 +1,87 @@
+diff --git a/src/cart.ts b/src/cart.ts
+--- a/src/cart.ts
++++ b/src/cart.ts
+@@ -19,15 +19,15 @@
+   private readonly items = new Map<string, LineItem>();
+   private coupon: Coupon | null = null;
+ 
+-  addItem(item: Omit<LineItem, "quantity">, quantity = 1): void {
+-    if (!Number.isInteger(quantity) || quantity <= 0) {
++  add(line: LineItem): void {
++    if (!Number.isInteger(line.quantity) || line.quantity <= 0) {
+       throw new RangeError("quantity must be a positive integer");
+     }
+-    const existing = this.items.get(item.sku);
++    const existing = this.items.get(line.sku);
+     if (existing) {
+-      existing.quantity += quantity;
++      existing.quantity += line.quantity;
+     } else {
+-      this.items.set(item.sku, { ...item, quantity });
++      this.items.set(line.sku, { ...line });
+     }
+   }
+ 
+diff --git a/test/cart.test.ts b/test/cart.test.ts
+--- a/test/cart.test.ts
++++ b/test/cart.test.ts
+@@ -24,29 +24,29 @@
+ describe("Cart", () => {
+   it("merges quantities for the same sku", () => {
+     const cart = new Cart();
+-    cart.addItem(mug);
+-    cart.addItem(mug, 2);
++    cart.add({ ...mug, quantity: 1 });
++    cart.add({ ...mug, quantity: 2 });
+     expect(cart.lines()).toEqual([{ ...mug, quantity: 3 }]);
+   });
+ 
+   it("rejects non positive quantities", () => {
+-    expect(() => new Cart().addItem(mug, 0)).toThrow(RangeError);
++    expect(() => new Cart().add({ ...mug, quantity: 0 })).toThrow(RangeError);
+   });
+ 
+   it("computes totals with coupon and tax", () => {
+     const cart = new Cart();
+-    cart.addItem(mug);
+-    cart.addItem(beans);
++    cart.add({ ...mug, quantity: 1 });
++    cart.add({ ...beans, quantity: 1 });
+     cart.applyCoupon(tenOff);
+     expect(cart.totals(0.08, now)).toEqual({ subtotal: 37_49, discount: 3_75, tax: 2_70, total: 36_44 });
+   });
+ 
+   it("ignores expired coupons and small orders", () => {
+     const cart = new Cart();
+-    cart.addItem(mug);
++    cart.add({ ...mug, quantity: 1 });
+     cart.applyCoupon(tenOff);
+     expect(cart.totals(0, now).discount).toBe(0);
+-    cart.addItem(beans);
++    cart.add({ ...beans, quantity: 1 });
+     expect(cart.totals(0, new Date("2024-07-01")).discount).toBe(0);
+   });
+ });
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -5,7 +5,7 @@
+ 
+ ```ts
+ const cart = new Cart();
+-cart.addItem({ sku: "MUG-01", name: "Coffee mug", unitPrice: 1250 }, 2);
++cart.add({ sku: "MUG-01", name: "Coffee mug", unitPrice: 1250, quantity: 2 });
+ cart.applyCoupon(coupon);
+ const { total } = cart.totals(0.08);
+ ```
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "@shop/cart",
+-  "version": "1.4.0",
++  "version": "2.0.0",
+   "private": true,
+   "type": "module",
+   "main": "dist/cart.js",

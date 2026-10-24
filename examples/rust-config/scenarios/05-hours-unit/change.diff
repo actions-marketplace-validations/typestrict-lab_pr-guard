@@ -1,0 +1,33 @@
+diff --git a/src/duration.rs b/src/duration.rs
+--- a/src/duration.rs
++++ b/src/duration.rs
+@@ -1,6 +1,6 @@
+ use std::time::Duration;
+ 
+-/// Parses durations such as `250ms`, `30s` or `5m`.
++/// Parses durations such as `250ms`, `30s`, `5m` or `6h`.
+ pub fn parse_duration(raw: &str) -> Result<Duration, String> {
+     let raw = raw.trim();
+     let split = raw.find(|c: char| !c.is_ascii_digit()).unwrap_or(raw.len());
+@@ -10,7 +10,8 @@
+         "ms" => Ok(Duration::from_millis(value)),
+         "s" => Ok(Duration::from_secs(value)),
+         "m" => Ok(Duration::from_secs(value * 60)),
+-        _ => Err(format!("unknown unit in {raw:?}, expected ms, s or m")),
++        "h" => Ok(Duration::from_secs(value * 60)),
++        _ => Err(format!("unknown unit in {raw:?}, expected ms, s, m or h")),
+     }
+ }
+ 
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -5,7 +5,7 @@
+ ```toml
+ listen_addr = "0.0.0.0:8080"   # default 127.0.0.1:8080
+ workers = 8                    # default 4
+-request_timeout = "10s"        # ms, s or m; default 30s
++request_timeout = "10s"        # ms, s, m or h; default 30s
+ database_url = "postgres://db/app"
+ ```
+ 

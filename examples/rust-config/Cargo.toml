@@ -1,0 +1,13 @@
+[package]
+name = "svc-config"
+version = "0.3.1"
+edition = "2021"
+description = "Loads service settings from per-profile TOML files"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+toml = "0.8"
+
+# Standalone crate, not a member of any parent workspace.
+[workspace]

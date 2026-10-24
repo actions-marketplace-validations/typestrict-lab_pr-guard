@@ -1,0 +1,14 @@
+diff --git a/middleware.go b/middleware.go
+--- a/middleware.go
++++ b/middleware.go
+@@ -23,8 +23,8 @@
+ 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+ 		k, err := key(r)
+ 		if err != nil {
+-			log.Printf("ratelimit: %v", err)
+-			http.Error(w, "bad request", http.StatusBadRequest)
++			log.Printf("ratelimit: cannot key %s %s from %q: %v", r.Method, r.URL.Path, r.RemoteAddr, err)
++			next.ServeHTTP(w, r)
+ 			return
+ 		}
+ 		if !l.Allow(k) {

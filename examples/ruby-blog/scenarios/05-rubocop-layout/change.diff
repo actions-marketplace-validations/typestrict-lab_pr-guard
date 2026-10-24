@@ -1,0 +1,65 @@
+diff --git a/.rubocop.yml b/.rubocop.yml
+new file mode 100644
+--- /dev/null
++++ b/.rubocop.yml
+@@ -0,0 +1,9 @@
++AllCops:
++  NewCops: enable
++  TargetRubyVersion: 3.2
++
++Layout/LineLength:
++  Max: 100
++
++Style/StringLiterals:
++  EnforcedStyle: double_quotes
+diff --git a/app.rb b/app.rb
+--- a/app.rb
++++ b/app.rb
+@@ -15,7 +15,9 @@
+     def require_admin!
+       token = request.env["HTTP_AUTHORIZATION"].to_s.delete_prefix("Bearer ")
+       expected = settings.admin_token
+-      halt 401, { error: "unauthorized" }.to_json unless expected && Rack::Utils.secure_compare(token, expected)
++      return if expected && Rack::Utils.secure_compare(token, expected)
++
++      halt 401, { error: "unauthorized" }.to_json
+     end
+ 
+     def json_body
+@@ -40,9 +42,16 @@
+   post "/admin/posts" do
+     require_admin!
+     attrs = json_body
+-    halt 422, { error: "title and body are required" }.to_json if attrs["title"].to_s.empty? || attrs["body"].to_s.empty?
+-    post = Post.new(id: SecureRandom.hex(4), title: attrs["title"], body: attrs["body"],
+-                    author: attrs.fetch("author", "admin"), published_at: attrs["publish"] ? Time.now : nil)
++    if attrs["title"].to_s.empty? || attrs["body"].to_s.empty?
++      halt 422, { error: "title and body are required" }.to_json
++    end
++    post = Post.new(
++      id: SecureRandom.hex(4),
++      title: attrs["title"],
++      body: attrs["body"],
++      author: attrs.fetch("author", "admin"),
++      published_at: attrs["publish"] ? Time.now : nil
++    )
+     status 201
+     store.save(post).to_h.to_json
+   end
+diff --git a/lib/post.rb b/lib/post.rb
+--- a/lib/post.rb
++++ b/lib/post.rb
+@@ -22,6 +22,12 @@
+   end
+ 
+   def to_h
+-    { id: id, title: title, author: author, published_at: published_at&.iso8601, excerpt: excerpt }
++    {
++      id: id,
++      title: title,
++      author: author,
++      published_at: published_at&.iso8601,
++      excerpt: excerpt
++    }
+   end
+ end

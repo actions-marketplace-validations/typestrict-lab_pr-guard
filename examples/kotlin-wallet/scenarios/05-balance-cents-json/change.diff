@@ -1,0 +1,31 @@
+diff --git a/src/main/kotlin/wallet/Wallet.kt b/src/main/kotlin/wallet/Wallet.kt
+--- a/src/main/kotlin/wallet/Wallet.kt
++++ b/src/main/kotlin/wallet/Wallet.kt
+@@ -8,7 +8,7 @@
+     val id: String,
+     @SerialName("owner_id") val ownerId: String,
+     /** Balance in minor units (cents). */
+-    @SerialName("balance") val balanceCents: Long,
++    @SerialName("balance_cents") val balanceCents: Long,
+     val currency: String,
+ )
+ 
+diff --git a/src/test/kotlin/wallet/WalletJsonTest.kt b/src/test/kotlin/wallet/WalletJsonTest.kt
+new file mode 100644
+--- /dev/null
++++ b/src/test/kotlin/wallet/WalletJsonTest.kt
+@@ -0,0 +1,14 @@
++package wallet
++
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlinx.serialization.encodeToString
++import kotlinx.serialization.json.Json
++
++class WalletJsonTest {
++    @Test
++    fun `balance is serialized in cents with an explicit name`() {
++        val json = Json.encodeToString(Wallet("a", "alice", 1_50, "USD"))
++        assertEquals("""{"id":"a","owner_id":"alice","balance_cents":150,"currency":"USD"}""", json)
++    }
++}

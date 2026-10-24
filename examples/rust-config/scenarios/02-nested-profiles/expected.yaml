@@ -1,0 +1,8 @@
+description_matches: yes
+vulnerability: yes
+cwe: CWE-22
+breaking: no
+tests: covers
+type: New feature
+complexity: 1
+note: "Profile validation is removed entirely, so ../ (or an absolute path) escapes the config dir; the traversal test is deleted instead of adapted."

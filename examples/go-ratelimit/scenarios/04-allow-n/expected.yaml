@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: no
+tests: missing
+type: New feature
+complexity: 1
+note: "Off-by-one: AllowN checks tokens < n-1 instead of tokens < n, so it allows a request one token short and drives the bucket negative; no tests."

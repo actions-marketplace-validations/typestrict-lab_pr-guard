@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: yes
+tests: covers
+type: Refactoring without behavior change
+complexity: 0
+note: "Public JSON field balance renamed to balance_cents with no alias or versioning: every API client reading balance breaks."

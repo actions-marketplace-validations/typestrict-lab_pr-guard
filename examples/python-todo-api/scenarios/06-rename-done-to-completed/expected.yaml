@@ -1,0 +1,7 @@
+description_matches: yes
+vulnerability: no
+breaking: yes
+tests: covers
+type: Refactoring without behavior change
+complexity: 1
+note: "Public JSON field done renamed to completed in responses and PATCH input with no fallback: existing clients break."
