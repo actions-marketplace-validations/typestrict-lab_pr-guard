@@ -24,6 +24,21 @@ pub struct Answers {
     /// Only when the pull request links an issue.
     pub resolves_issue: Option<f64>,
     pub focused: Option<f64>,
+    /// Where `change_type` came from.
+    pub change_type_source: Option<Source>,
+    /// `Some(false)` when the change calls for no tests (no production code changed); `tests_cover` is then absent
+    /// when a rule said so.
+    pub tests_applicable: Option<bool>,
+    /// Where the tests answer came from.
+    pub tests_source: Option<Source>,
+}
+
+/// Who answered: a rule over the changed files, or the model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Source {
+    Rule,
+    Model,
 }
 
 impl Answers {
@@ -80,6 +95,12 @@ pub struct Verdict {
     pub change_type: Option<String>,
     pub cwe: Option<String>,
     pub labels: Vec<String>,
+    #[serde(default)]
+    pub change_type_source: Option<Source>,
+    #[serde(default)]
+    pub tests_applicable: Option<bool>,
+    #[serde(default)]
+    pub tests_source: Option<Source>,
 }
 
 pub fn decide(policy: &Policy, files: &[FileChange], answers: &Answers, pr_labels: &[String], rule_findings: Vec<Finding>) -> Verdict {
@@ -87,7 +108,8 @@ pub fn decide(policy: &Policy, files: &[FileChange], answers: &Answers, pr_label
     if pr_labels.contains(&policy.skip_label) {
         return Verdict {
             skipped: true, shadow, score: None, scores: BTreeMap::new(), reviewers: 0, auto_merge: false, blocked: false,
-            not_evaluated: vec![], findings: vec![], change_type: None, cwe: None, labels: vec![],
+            not_evaluated: vec![], findings: vec![], change_type: None, cwe: None, labels: vec![], change_type_source: None,
+            tests_applicable: None, tests_source: None,
         };
     }
     let mut not_evaluated: Vec<String> = files
@@ -151,7 +173,8 @@ pub fn decide(policy: &Policy, files: &[FileChange], answers: &Answers, pr_label
     findings.sort_by_key(|f| std::cmp::Reverse(f.level));
     Verdict {
         skipped: false, shadow, score, scores, reviewers, auto_merge, blocked, not_evaluated, findings,
-        change_type: answers.change_type.clone(), cwe: answers.cwe.clone(), labels,
+        change_type: answers.change_type.clone(), cwe: answers.cwe.clone(), labels, change_type_source: answers.change_type_source,
+        tests_applicable: answers.tests_applicable, tests_source: answers.tests_source,
     }
 }
 

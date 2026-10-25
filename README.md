@@ -26,6 +26,27 @@ tuned into blocking thresholds, so start every repository in shadow mode.
 | What kind of change is it? | label only |
 | Does it break the public API? | reported, not used yet |
 
+The questions and their options come from the model package when its `decision_ai.json` lists them (`tasks`);
+pr-guard only asks the tasks the package lists.
+
+### Rules before the model
+
+What the changed files alone settle is answered by a rule, before the model and also with `--no-model`; the model is
+not asked those questions.
+
+| Answer | Rule |
+|---|---|
+| Type `Documentation only` | every file is documentation (`.md`, `.rst`, `.adoc`, `.txt`, `docs/` or `doc/`, `LICENSE`, `CHANGELOG`, `README`) |
+| Type `Tests only` | every file is a test |
+| Type `Build system, dependencies or continuous integration` | every file is a manifest, lock file, build script, Dockerfile or CI configuration |
+| Type `Formatting or style only` | every hunk only moves whitespace (removed and added text equal once whitespace is dropped, and outside Python a trailing comma before `)`, `]` or `}`); formatter settings may come along |
+| Tests not applicable | no production code changed beyond whitespace (docs, tests, configuration, build, formatting) |
+
+The rules run in that order. Any other change (code, or a mix) goes to the model: the type among bug fix, new feature,
+refactoring, performance improvement and maintenance, and whether the tests cover the changed code. The text report
+marks a rule answer with `(by rule)`, the JSON verdict with `change_type_source` and `tests_source` (`rule` or `model`)
+next to `tests_applicable`, and the log on stderr with `pr-guard: prg-tipo rule <type>`.
+
 ## Usage
 
 ```sh

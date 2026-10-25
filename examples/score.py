@@ -9,6 +9,8 @@ for d in sorted(glob.glob('examples/*/scenarios/*/')):
     for l in r.stderr.splitlines():
         m=re.match(r'pr-guard: (\S+)\s+([\d.]+)\s+(.*)',l)
         if m: p[m[1]]=(float(m[2]),m[3])
+        m=re.match(r'pr-guard: (\S+) rule (.*)',l)  # settled by a rule over the files, not the model
+        if m: p[m[1]]=(1.0,m[2])
     yes=lambda t: p[t][1].startswith('Yes')
     got={'description_matches':'yes' if yes('pr-descricao-noul') else 'no','vulnerability':'yes' if yes('prg-vul') else 'no','breaking':'yes' if yes('prg-quebra') else 'no',
          'tests':{'Yes':'covers','No':'missing','Not':'not_applicable'}[p['prg-testes'][1].split()[0].rstrip(',:')],'type':p['prg-tipo'][1],

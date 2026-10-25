@@ -3,7 +3,7 @@
 use std::fmt::Write;
 
 use crate::policy::Level;
-use crate::verdict::Verdict;
+use crate::verdict::{Source, Verdict};
 
 pub const MARKER: &str = "<!-- pr-guard -->";
 
@@ -21,7 +21,11 @@ pub fn comment(v: &Verdict) -> String {
     };
     let _ = writeln!(s, "{who}{}", if v.shadow { " _(shadow mode: nothing is enforced)_" } else { "" });
     if let Some(score) = v.score {
-        let _ = writeln!(s, "\nCombined score: **{:.0}%**{}", score * 100.0, v.change_type.as_ref().map(|t| format!(" · type: `{t}`")).unwrap_or_default());
+        let by_rule = if v.change_type_source == Some(Source::Rule) { " (by rule)" } else { "" };
+        let _ = writeln!(s, "\nCombined score: **{:.0}%**{}", score * 100.0, v.change_type.as_ref().map(|t| format!(" · type: `{t}`{by_rule}")).unwrap_or_default());
+    }
+    if v.tests_applicable == Some(false) {
+        let _ = writeln!(s, "\nTests: not applicable (no production code changed).");
     }
     if !v.not_evaluated.is_empty() {
         let _ = writeln!(s, "\nNot evaluated (outside the model's languages): {}", v.not_evaluated.join(", "));

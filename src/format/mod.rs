@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 use crate::policy::{Level, Question};
 use crate::report;
-use crate::verdict::{Finding, Verdict};
+use crate::verdict::{Finding, Source, Verdict};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Format {
@@ -88,7 +88,10 @@ fn text(v: &Verdict, color: bool) -> String {
         facts.push(format!("score {:.0}%", score * 100.0));
     }
     if let Some(t) = &v.change_type {
-        facts.push(format!("type {t}"));
+        facts.push(format!("type {t}{}", if v.change_type_source == Some(Source::Rule) { " (by rule)" } else { "" }));
+    }
+    if v.tests_applicable == Some(false) {
+        facts.push(format!("tests not applicable{}", if v.tests_source == Some(Source::Rule) { " (no code changed, by rule)" } else { "" }));
     }
     if !facts.is_empty() {
         let _ = writeln!(s, "{}", facts.join(", "));
@@ -143,6 +146,28 @@ pub(crate) mod tests {
         assert!(t.contains("tests_cover 20%"));
         assert!(text(&sample(Mode::Enforce), true).contains("\x1b[1;31mblocked\x1b[0m"));
         assert!(text(&sample(Mode::Shadow), false).starts_with("pr-guard: passed, needs 2 reviewers (shadow mode"));
+    }
+
+    #[test]
+    fn answers_settled_by_a_rule_say_so_in_text_markdown_and_json() {
+        let files = [FileChange { path: "README.md".into(), deleted: false, added: vec![], removed: 0 }];
+        let a = Answers {
+            description_matches: Some(0.9), change_type: Some("Documentation only".into()), change_type_source: Some(Source::Rule),
+            tests_applicable: Some(false), tests_source: Some(Source::Rule), ..Answers::default()
+        };
+        let v = decide(&Policy::default(), &files, &a, &[], vec![]);
+        let t = text(&v, false);
+        assert!(t.contains("type Documentation only (by rule), tests not applicable (no code changed, by rule)"), "{t}");
+        let m = report::comment(&v);
+        assert!(m.contains("type: `Documentation only` (by rule)") && m.contains("Tests: not applicable"), "{m}");
+        let j: serde_json::Value = serde_json::from_str(&render(Format::Json, &v, false)).unwrap();
+        assert_eq!((j["change_type"].as_str(), j["change_type_source"].as_str(), j["tests_applicable"].as_bool()), (Some("Documentation only"), Some("rule"), Some(false)));
+        // A verdict written before these fields still reads.
+        let mut old = j.clone();
+        for k in ["change_type_source", "tests_applicable", "tests_source"] {
+            old.as_object_mut().unwrap().remove(k);
+        }
+        assert_eq!(serde_json::from_value::<Verdict>(old).unwrap().change_type_source, None);
     }
 
     #[test]

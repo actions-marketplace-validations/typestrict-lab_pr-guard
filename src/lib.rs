@@ -1,5 +1,6 @@
 pub mod ci;
 pub mod diff;
+pub mod facts;
 pub mod format;
 pub mod git;
 pub mod lang;

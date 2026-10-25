@@ -4,7 +4,8 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use pr_guard::format::{self, Format};
 use pr_guard::policy::{Mode, Policy};
-use pr_guard::{ci, diff, git, model, report, rules, verdict};
+use pr_guard::verdict::Source;
+use pr_guard::{ci, diff, facts, git, model, report, rules, verdict};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -136,8 +137,12 @@ fn run() -> anyhow::Result<()> {
             };
             if raw.trim().is_empty() {
                 eprintln!("pr-guard: no changes to check");
-            } else if !no_model && answers == verdict::Answers::default() {
-                ask_model(&mut answers, model_dir, threads, description.as_deref(), &raw)?;
+            } else if answers == verdict::Answers::default() {
+                // What the changed files settle first, free and the same without the model; the model only gets the rest.
+                answer_by_rule(&mut answers, &facts::files(&raw));
+                if !no_model {
+                    ask_model(&mut answers, model_dir, threads, description.as_deref(), &raw)?;
+                }
             }
             let found = rules::check(&policy.rules, &files)?;
             let v = verdict::decide(&policy, &files, &answers, &labels, found);
@@ -177,6 +182,53 @@ fn targets(formats: Vec<Format>, outputs: Vec<PathBuf>, comment: Option<PathBuf>
     Ok(t)
 }
 
+/// The change type and the tests question when a rule over the files settles them (`facts`).
+fn answer_by_rule(answers: &mut verdict::Answers, files: &[facts::File]) {
+    if let Some(t) = facts::change_type(files) {
+        eprintln!("pr-guard: prg-tipo rule {t}");
+        answers.change_type = Some(t.to_owned());
+        answers.change_type_source = Some(Source::Rule);
+    }
+    if !facts::code_changed(files) {
+        eprintln!("pr-guard: prg-testes rule Not applicable: no production code changed");
+        answers.tests_applicable = Some(false);
+        answers.tests_source = Some(Source::Rule);
+    }
+}
+
+/// One model answer into `answers`. The tests and type questions come in two shapes: the first packages ask tests as a
+/// choice with "Not applicable" and type with 9 classes; from the third round tests is yes/no (option 1 is yes) and the
+/// rule answers what is not applicable, and type has the 5 classes that take reading the code.
+fn apply(answers: &mut verdict::Answers, q: &model::Question, p: &[f64]) {
+    let best = p.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map_or(0, |(i, _)| i);
+    match q.name.as_str() {
+        "pr-descricao-noul" => answers.description_matches = Some(p[1]),
+        "prg-vul" => answers.vulnerability = Some(p[1]),
+        "prg-quebra" => answers.breaking = Some(p[1]),
+        "prg-testes" => {
+            answers.tests_source = Some(Source::Model);
+            match q.kind {
+                model::Kind::Noul => {
+                    answers.tests_cover = Some(p[1]);
+                    answers.tests_applicable = Some(true);
+                }
+                // Yes, No, Not applicable: not applicable (docs, configuration) is the safe side too.
+                model::Kind::Choice => {
+                    answers.tests_cover = Some(1.0 - p[1]);
+                    answers.tests_applicable = Some(!q.options[best].starts_with("Not applicable"));
+                }
+            }
+        }
+        "prg-tipo" => {
+            answers.change_type = Some(q.options[best].clone());
+            answers.change_type_source = Some(Source::Model);
+        }
+        "prg-complexidade" => answers.complexity = Some(best as u8),
+        // prg-quebra-api: weak on the held-out split (F1 0.48), reported but not used until it is retrained.
+        _ => {}
+    }
+}
+
 fn ask_model(answers: &mut verdict::Answers, dir: Option<PathBuf>, threads: Option<usize>, description: Option<&str>, raw_diff: &str) -> anyhow::Result<()> {
     let description = description.map(model::py_strip).filter(|d| !d.is_empty());
     let dir = dir.or_else(model::default_dir).context("no model directory: pass --model, set PR_GUARD_MODEL or HOME")?;
@@ -191,25 +243,24 @@ fn ask_model(answers: &mut verdict::Answers, dir: Option<PathBuf>, threads: Opti
     let loaded = t0.elapsed();
     let cut = model::cut_diff(raw_diff);
     let argmax = |p: &[f64]| p.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map_or(0, |(i, _)| i);
-    let tasks: Vec<&model::Task> = model::TASKS.iter().filter(|t| m.knows(t.name)).collect();
-    for task in tasks {
-        let Some(p) = m.ask(task, description, &cut)? else {
-            eprintln!("pr-guard: {} skipped (no description)", task.name);
+    let listed = model::listed_tasks(&dir)?;
+    for q in model::questions(listed.as_deref())? {
+        // Settled by a rule over the files (`answer_by_rule`).
+        let settled = match q.name.as_str() {
+            "prg-tipo" => answers.change_type_source == Some(Source::Rule),
+            "prg-testes" => answers.tests_source == Some(Source::Rule),
+            _ => false,
+        };
+        if settled || !m.knows(&q.name) {
+            continue;
+        }
+        let Some(p) = m.ask(&q, description, &cut)? else {
+            eprintln!("pr-guard: {} skipped (no description)", q.name);
             continue;
         };
         let best = argmax(&p);
-        eprintln!("pr-guard: {:<18} {:>5.3}  {}", task.name, p[best], task.options[best]);
-        match task.name {
-            "pr-descricao-noul" => answers.description_matches = Some(p[1]),
-            "prg-vul" => answers.vulnerability = Some(p[1]),
-            "prg-quebra" => answers.breaking = Some(p[1]),
-            // Not applicable (docs, configuration) is the safe side too.
-            "prg-testes" => answers.tests_cover = Some(1.0 - p[1]),
-            "prg-tipo" => answers.change_type = Some(task.options[best].to_owned()),
-            "prg-complexidade" => answers.complexity = Some(best as u8),
-            // prg-quebra-api: weak on the held-out split (F1 0.48), reported but not used until it is retrained.
-            _ => {}
-        }
+        eprintln!("pr-guard: {:<18} {:>5.3}  {}", q.name, p[best], q.options[best]);
+        apply(answers, &q, &p);
     }
     eprintln!("pr-guard: model loaded in {:.1}s, answered in {:.1}s", loaded.as_secs_f64(), (t0.elapsed() - loaded).as_secs_f64());
     Ok(())
@@ -230,6 +281,40 @@ mod tests {
         );
         assert!(targets(vec![Format::Sarif, Format::Junit], vec![p("a")], None).is_err());
         assert!(targets(vec![], vec![p("a")], None).is_err());
+    }
+
+    #[test]
+    fn tests_and_type_answers_map_from_both_package_shapes() {
+        let q = |name: &str, kind: model::Kind, options: &[&str]| model::Question {
+            name: name.into(), kind, question: String::new(), options: options.iter().map(|o| o.to_string()).collect(), message: None,
+        };
+        let old = model::TASKS.iter().find(|t| t.name == "prg-testes").map(model::Question::from).unwrap();
+        // The 3-option choice: 1 - P(no) as today, "Not applicable" as the argmax means tests do not apply.
+        let mut a = verdict::Answers::default();
+        apply(&mut a, &old, &[0.1, 0.2, 0.7]);
+        assert_eq!((a.tests_cover, a.tests_applicable, a.tests_source), (Some(0.8), Some(false), Some(Source::Model)));
+        apply(&mut a, &old, &[0.6, 0.3, 0.1]);
+        assert_eq!(a.tests_applicable, Some(true));
+        // The yes/no question: P(yes).
+        let noul = q("prg-testes", model::Kind::Noul, &["No, the change needs tests.", "Yes, the tests exercise it."]);
+        let mut a = verdict::Answers::default();
+        apply(&mut a, &noul, &[0.25, 0.75]);
+        assert_eq!((a.tests_cover, a.tests_applicable), (Some(0.75), Some(true)));
+        // The type: the argmax option's text, whichever list the package has.
+        let five = q("prg-tipo", model::Kind::Choice, &["Bug fix", "New feature", "Refactoring without behavior change", "Performance improvement", "Maintenance or tooling"]);
+        apply(&mut a, &five, &[0.1, 0.1, 0.1, 0.1, 0.6]);
+        assert_eq!((a.change_type.as_deref(), a.change_type_source), (Some("Maintenance or tooling"), Some(Source::Model)));
+    }
+
+    #[test]
+    fn rules_settle_the_type_and_the_tests_question_before_the_model() {
+        let mut a = verdict::Answers::default();
+        answer_by_rule(&mut a, &facts::files("--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-a\n+b\n"));
+        assert_eq!((a.change_type.as_deref(), a.change_type_source), (Some(facts::DOCUMENTATION), Some(Source::Rule)));
+        assert_eq!((a.tests_cover, a.tests_applicable, a.tests_source), (None, Some(false), Some(Source::Rule)));
+        let mut a = verdict::Answers::default();
+        answer_by_rule(&mut a, &facts::files("--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1 +1 @@\n-a\n+b\n"));
+        assert_eq!(a, verdict::Answers::default());
     }
 
     #[test]

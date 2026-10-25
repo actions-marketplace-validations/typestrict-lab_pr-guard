@@ -121,6 +121,70 @@ pub const TASKS: [Task; 7] = [
     },
 ];
 
+/// A question as the model is asked it: a built-in task with the question and options the package lists, if any.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Question {
+    pub name: String,
+    pub kind: Kind,
+    pub question: String,
+    pub options: Vec<String>,
+    pub message: Option<&'static str>,
+}
+
+impl From<&Task> for Question {
+    fn from(t: &Task) -> Self {
+        Self { name: t.name.into(), kind: t.kind, question: t.question.into(), options: t.options.iter().map(|o| o.to_string()).collect(), message: t.message }
+    }
+}
+
+/// One entry of `tasks` in typestrict's `decision_ai.json`; `options` is null when each example brings its own.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ListedTask {
+    pub name: String,
+    pub kind: String,
+    #[serde(default)]
+    pub question: Option<String>,
+    #[serde(default)]
+    pub options: Option<Vec<String>>,
+}
+
+/// The package's task list, or `None` when it has none (the first TS-PRGuard, the lab's one-question model).
+pub fn listed_tasks(dir: &Path) -> Result<Option<Vec<ListedTask>>> {
+    let p = dir.join("decision_ai.json");
+    if !p.exists() {
+        return Ok(None);
+    }
+    let m: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&p).with_context(|| format!("reading {}", p.display()))?)?;
+    match m.get("tasks") {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(t) => serde_json::from_value(t.clone()).map(Some).context("decision_ai.json: tasks"),
+    }
+}
+
+/// The questions to ask, in the order of `TASKS`. With a task list, only the listed tasks, each with the package's
+/// question and options (the built-in ones where the package gives the options per example); without one, every task.
+pub fn questions(listed: Option<&[ListedTask]>) -> Result<Vec<Question>> {
+    let Some(listed) = listed else { return Ok(TASKS.iter().map(Question::from).collect()) };
+    let mut out = Vec::new();
+    for t in &TASKS {
+        let Some(l) = listed.iter().find(|l| l.name == t.name) else { continue };
+        let mut q = Question::from(t);
+        if let Some(options) = &l.options {
+            q.kind = match l.kind.as_str() {
+                "noul" => Kind::Noul,
+                "choice" => Kind::Choice,
+                k => anyhow::bail!("decision_ai.json: task {} has kind {k}, which pr-guard does not ask", l.name),
+            };
+            q.options = options.clone();
+        }
+        if let Some(question) = &l.question {
+            q.question = question.clone();
+        }
+        out.push(q);
+    }
+    Ok(out)
+}
+
 /// The model package: the lab's `pr_guard_model.json` (one question) or typestrict's `decision_ai.json` (all of them).
 #[derive(Debug, Clone, Deserialize)]
 pub struct Meta {
@@ -181,12 +245,18 @@ fn suffix(f: &str) -> String {
     }
 }
 
-fn is_code(f: &str) -> bool {
+/// Production code: a code extension, not a test, an example or a generated file.
+pub fn is_code(f: &str) -> bool {
     CODE_EXT.contains(&suffix(f).as_str()) && !TEST.is_match(f) && !EXAMPLE.is_match(f) && !GENERATED.is_match(f)
 }
 
 fn is_test(f: &str) -> bool {
     TEST.is_match(f) && !EXAMPLE.is_match(f)
+}
+
+/// The test regex alone (fixtures under a test directory count too).
+pub fn in_tests(f: &str) -> bool {
+    TEST.is_match(f)
 }
 
 /// `blocos`: (file, text) per file of a unified diff. A part starts at each line that begins with `diff --git `,
@@ -411,14 +481,15 @@ impl Model {
 
     /// The probability of each option of `task`, or `None` when the task needs the PR text and there is none.
     /// `cut` is the diff as the dataset stores it (`cut_diff`).
-    pub fn ask(&mut self, task: &Task, message: Option<&str>, cut: &str) -> Result<Option<Vec<f64>>> {
-        let state = match (task.message, message) {
+    pub fn ask(&mut self, q: &Question, message: Option<&str>, cut: &str) -> Result<Option<Vec<f64>>> {
+        let state = match (q.message, message) {
             (Some(key), Some(m)) => state(Some((key, m)), cut),
             (Some(_), None) => return Ok(None),
             (None, _) => state(None, cut),
         };
-        let e = self.enc.encode(task.question, task.options, &state)?;
-        self.probs(&e, task.kind).map(Some)
+        let options: Vec<&str> = q.options.iter().map(String::as_str).collect();
+        let e = self.enc.encode(&q.question, &options, &state)?;
+        self.probs(&e, q.kind).map(Some)
     }
 
     /// Softmax over the options' logits, each over the run's temperature for (question type, number of options).
@@ -493,5 +564,40 @@ mod tests {
         assert!(order.windows(2).all(|w| w[0] < w[1]), "{c}");
         assert!(c.find("logo.png").unwrap() < c.find("+++ b/src/a_test.go").unwrap());
         assert_eq!(cut_diff(&"x".repeat(5001)), format!("{}\n... (diff cut)", "x".repeat(5000)));
+    }
+
+    #[test]
+    fn the_package_task_list_picks_and_shapes_the_questions() {
+        let dir = std::env::temp_dir().join(format!("pr-guard-manifest-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // No decision_ai.json, or one without a task list: every built-in task as written.
+        assert!(listed_tasks(&dir).unwrap().is_none());
+        std::fs::write(dir.join("decision_ai.json"), r#"{"format":"decision-ai/option-reader@1"}"#).unwrap();
+        assert!(listed_tasks(&dir).unwrap().is_none());
+        assert_eq!(questions(None).unwrap().len(), TASKS.len());
+        std::fs::write(
+            dir.join("decision_ai.json"),
+            r#"{"tasks":[
+                {"name":"prg-tipo","kind":"choice","question":"What kind of change is this diff?","options":["Bug fix","New feature"]},
+                {"name":"prg-testes","kind":"noul","question":"Do the tests in this change cover the changed code?",
+                 "options":["No, the change needs tests and the ones included do not cover it.","Yes, the tests in the change exercise the changed code."]},
+                {"name":"prg-vul","kind":"noul","question":"Is this change unsafe?","options":null},
+                {"name":"someone-else","kind":"score","question":"?","options":["a","b"]}
+            ]}"#,
+        )
+        .unwrap();
+        let listed = listed_tasks(&dir).unwrap().unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        let q = questions(Some(&listed)).unwrap();
+        // In the order of TASKS; unlisted ones (prg-quebra-api among them) and unknown names left out.
+        assert_eq!(q.iter().map(|q| q.name.as_str()).collect::<Vec<_>>(), ["prg-vul", "prg-testes", "prg-tipo"]);
+        // Null options: the built-in kind and options, the package's question.
+        assert_eq!((q[0].kind, q[0].question.as_str(), q[0].options.len()), (Kind::Noul, "Is this change unsafe?", 2));
+        assert_eq!(q[1].kind, Kind::Noul);
+        assert!(q[1].options[1].starts_with("Yes"));
+        assert_eq!((q[2].kind, q[2].options.clone()), (Kind::Choice, vec!["Bug fix".to_string(), "New feature".into()]));
+        assert_eq!(q[2].message, Some("commit_message"));
+        let bad = [ListedTask { name: "prg-vul".into(), kind: "score".into(), question: None, options: Some(vec!["a".into(), "b".into()]) }];
+        assert!(questions(Some(&bad)).is_err());
     }
 }
