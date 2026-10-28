@@ -42,8 +42,10 @@ not asked those questions.
 | Type `Formatting or style only` | every hunk only moves whitespace (removed and added text equal once whitespace is dropped, and outside Python a trailing comma before `)`, `]` or `}`); formatter settings may come along |
 | Tests not applicable | no production code changed beyond whitespace (docs, tests, configuration, build, formatting) |
 
-The rules run in that order. Any other change (code, or a mix) goes to the model: the type among bug fix, new feature,
-refactoring, performance improvement and maintenance, and whether the tests cover the changed code. The text report
+The rules run in that order. Any other change (code, or a mix) goes to the model: whether the tests cover the changed
+code, and the type among bug fix, new feature, refactoring, performance improvement and maintenance when the package
+lists the type task. A package without it leaves the type empty for code changes; the type is a label only and never
+weighs in the score. The text report
 marks a rule answer with `(by rule)`, the JSON verdict with `change_type_source` and `tests_source` (`rule` or `model`)
 next to `tests_applicable`, and the log on stderr with `pr-guard: prg-tipo rule <type>`.
 
