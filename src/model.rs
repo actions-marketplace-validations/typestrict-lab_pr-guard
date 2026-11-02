@@ -4,8 +4,8 @@
 //! and the calibration without raising any error. Every step below is a port of the lab's Python, and
 //! `tests/golden.rs` checks it against vectors the Python wrote:
 //!
-//! 1. `cut_diff`: `corta` in `prguard_montar.py`, production code first, then tests, then the rest, cut at 5,000
-//!    characters (the diff the dataset stores).
+//! 1. `cut_diff`: `corta` in `prguard_montar.py`, production code first, then tests, then the rest, cut at the task's
+//!    `diff_chars` (the diff the dataset stores: 5,000 characters, 14,000 for breaking changes).
 //! 2. `description_state`: the state `prguard_fumaca.py` builds (description cut at 600 characters, the diff) through
 //!    `render` in `typestrict/format.py`, which is `json.dumps(sort_keys=True, ensure_ascii=False, separators=(",", ":"))`.
 //! 3. `Encoder::encode`: `Collator.encode` in `typestrict/data/collate.py` without shuffling, as in evaluation:
@@ -32,6 +32,8 @@ pub const DESCRIPTION_CRITERIA: [&str; 2] =
 pub const DESCRIPTION_CHARS: usize = 600;
 /// `CORTE` in `prguard_montar.py`.
 pub const DIFF_CHARS: usize = 5000;
+/// `--corte-quebra` in `prguard_f3.py` (v4, lab HIPOTESES PRG9): the breaking-change question reads the whole PR.
+pub const BREAKING_DIFF_CHARS: usize = 14_000;
 
 /// Where the weights live when `--model` is not given: `$PR_GUARD_MODEL`, else `<cache>/<MODEL_NAME>` with the cache
 /// from `$PR_GUARD_CACHE` (each CI wrapper keeps it in the CI cache), `$XDG_CACHE_HOME/pr-guard` or `~/.cache/pr-guard`.
@@ -63,21 +65,24 @@ pub struct Task {
     pub question: &'static str,
     pub options: &'static [&'static str],
     pub message: Option<&'static str>,
+    /// Where the diff the task reads is cut (`cut_diff`), as its training data was.
+    pub diff_chars: usize,
 }
 
 const BREAK: [&str; 2] = ["No, existing users keep working without changes.", "Yes, existing users must change their code or configuration."];
 
 pub const TASKS: [Task; 7] = [
-    Task { name: "pr-descricao-noul", kind: Kind::Noul, question: DESCRIPTION_INSTRUCTIONS, options: &DESCRIPTION_CRITERIA, message: Some("description") },
+    Task { name: "pr-descricao-noul", kind: Kind::Noul, question: DESCRIPTION_INSTRUCTIONS, options: &DESCRIPTION_CRITERIA, message: Some("description"), diff_chars: DIFF_CHARS },
     Task {
         name: "prg-vul",
         kind: Kind::Noul,
         question: "Does this code change introduce a security vulnerability?",
         options: &["No, the change does not introduce a security vulnerability.", "Yes, the change introduces a security vulnerability."],
         message: None,
+        diff_chars: DIFF_CHARS,
     },
-    Task { name: "prg-quebra", kind: Kind::Noul, question: "Does this change break compatibility for the users of this code?", options: &BREAK, message: Some("description") },
-    Task { name: "prg-quebra-api", kind: Kind::Noul, question: "Does this change break compatibility for the users of this code?", options: &BREAK, message: Some("commit_message") },
+    Task { name: "prg-quebra", kind: Kind::Noul, question: "Does this change break compatibility for the users of this code?", options: &BREAK, message: Some("description"), diff_chars: BREAKING_DIFF_CHARS },
+    Task { name: "prg-quebra-api", kind: Kind::Noul, question: "Does this change break compatibility for the users of this code?", options: &BREAK, message: Some("commit_message"), diff_chars: DIFF_CHARS },
     Task {
         name: "prg-testes",
         kind: Kind::Choice,
@@ -88,6 +93,7 @@ pub const TASKS: [Task; 7] = [
             "Not applicable: the change does not call for tests (docs, configuration, formatting).",
         ],
         message: None,
+        diff_chars: DIFF_CHARS,
     },
     Task {
         name: "prg-tipo",
@@ -105,6 +111,7 @@ pub const TASKS: [Task; 7] = [
             "Documentation only",
         ],
         message: Some("commit_message"),
+        diff_chars: DIFF_CHARS,
     },
     Task {
         name: "prg-complexidade",
@@ -118,6 +125,7 @@ pub const TASKS: [Task; 7] = [
             "Very large: hundreds of lines across many files with much new logic",
         ],
         message: None,
+        diff_chars: DIFF_CHARS,
     },
 ];
 
@@ -129,11 +137,19 @@ pub struct Question {
     pub question: String,
     pub options: Vec<String>,
     pub message: Option<&'static str>,
+    pub diff_chars: usize,
 }
 
 impl From<&Task> for Question {
     fn from(t: &Task) -> Self {
-        Self { name: t.name.into(), kind: t.kind, question: t.question.into(), options: t.options.iter().map(|o| o.to_string()).collect(), message: t.message }
+        Self {
+            name: t.name.into(),
+            kind: t.kind,
+            question: t.question.into(),
+            options: t.options.iter().map(|o| o.to_string()).collect(),
+            message: t.message,
+            diff_chars: t.diff_chars,
+        }
     }
 }
 
@@ -290,12 +306,12 @@ fn blocks(diff: &str) -> Vec<(String, String)> {
 }
 
 /// `corta`: production code first, then tests, then the rest (changelog, version), so a size cut does not eat the
-/// change; then cut at `DIFF_CHARS` characters.
-pub fn cut_diff(diff: &str) -> String {
+/// change; then cut at `chars` characters.
+pub fn cut_diff(diff: &str, chars: usize) -> String {
     let mut b = blocks(diff);
     b.sort_by_key(|(f, _)| if is_code(f) { 0 } else if is_test(f) { 1 } else { 2 });
     let d: String = b.into_iter().map(|(_, t)| t).collect();
-    match d.char_indices().nth(DIFF_CHARS) {
+    match d.char_indices().nth(chars) {
         Some((i, _)) => format!("{}\n... (diff cut)", &d[..i]),
         None => d,
     }
@@ -480,7 +496,7 @@ impl Model {
     }
 
     /// The probability of each option of `task`, or `None` when the task needs the PR text and there is none.
-    /// `cut` is the diff as the dataset stores it (`cut_diff`).
+    /// `cut` is the diff as the dataset stores it (`cut_diff` at the question's `diff_chars`).
     pub fn ask(&mut self, q: &Question, message: Option<&str>, cut: &str) -> Result<Option<Vec<f64>>> {
         let state = match (q.message, message) {
             (Some(key), Some(m)) => state(Some((key, m)), cut),
@@ -534,7 +550,7 @@ impl Model {
 
     /// Does the change do what the description says? `raw_diff` is the diff as git prints it.
     pub fn description_matches(&mut self, description: &str, raw_diff: &str) -> Result<f64> {
-        let e = self.enc.description(description, &cut_diff(raw_diff))?;
+        let e = self.enc.description(description, &cut_diff(raw_diff, DIFF_CHARS))?;
         self.noul(&e)
     }
 }
@@ -559,11 +575,12 @@ mod tests {
                  diff --git a/logo.png b/logo.png\nBinary files differ\n\
                  diff --git a/src/a_test.go b/src/a_test.go\n--- a/src/a_test.go\n+++ b/src/a_test.go\n@@ -1 +1 @@\n+t\n\
                  diff --git a/src/a.go b/src/a.go\n--- a/src/a.go\n+++ b/src/a.go\n@@ -1 +1 @@\n+c\n";
-        let c = cut_diff(d);
+        let c = cut_diff(d, DIFF_CHARS);
         let order: Vec<usize> = ["src/a.go", "src/a_test.go", "CHANGELOG.md"].iter().map(|f| c.find(&format!("+++ b/{f}")).unwrap()).collect();
         assert!(order.windows(2).all(|w| w[0] < w[1]), "{c}");
         assert!(c.find("logo.png").unwrap() < c.find("+++ b/src/a_test.go").unwrap());
-        assert_eq!(cut_diff(&"x".repeat(5001)), format!("{}\n... (diff cut)", "x".repeat(5000)));
+        assert_eq!(cut_diff(&"x".repeat(5001), DIFF_CHARS), format!("{}\n... (diff cut)", "x".repeat(5000)));
+        assert_eq!(cut_diff(&"x".repeat(5001), BREAKING_DIFF_CHARS), "x".repeat(5001));
     }
 
     #[test]

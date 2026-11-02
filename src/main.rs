@@ -241,7 +241,6 @@ fn ask_model(answers: &mut verdict::Answers, dir: Option<PathBuf>, threads: Opti
     let t0 = std::time::Instant::now();
     let mut m = model::Model::load(&dir, threads)?;
     let loaded = t0.elapsed();
-    let cut = model::cut_diff(raw_diff);
     let argmax = |p: &[f64]| p.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map_or(0, |(i, _)| i);
     let listed = model::listed_tasks(&dir)?;
     for q in model::questions(listed.as_deref())? {
@@ -254,7 +253,7 @@ fn ask_model(answers: &mut verdict::Answers, dir: Option<PathBuf>, threads: Opti
         if settled || !m.knows(&q.name) {
             continue;
         }
-        let Some(p) = m.ask(&q, description, &cut)? else {
+        let Some(p) = m.ask(&q, description, &model::cut_diff(raw_diff, q.diff_chars))? else {
             eprintln!("pr-guard: {} skipped (no description)", q.name);
             continue;
         };
@@ -286,7 +285,7 @@ mod tests {
     #[test]
     fn tests_and_type_answers_map_from_both_package_shapes() {
         let q = |name: &str, kind: model::Kind, options: &[&str]| model::Question {
-            name: name.into(), kind, question: String::new(), options: options.iter().map(|o| o.to_string()).collect(), message: None,
+            name: name.into(), kind, question: String::new(), options: options.iter().map(|o| o.to_string()).collect(), message: None, diff_chars: model::DIFF_CHARS,
         };
         let old = model::TASKS.iter().find(|t| t.name == "prg-testes").map(model::Question::from).unwrap();
         // The 3-option choice: 1 - P(no) as today, "Not applicable" as the argmax means tests do not apply.

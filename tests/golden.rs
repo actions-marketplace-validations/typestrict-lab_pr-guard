@@ -80,7 +80,7 @@ fn auc(p: &[f64], y: &[u8]) -> f64 {
 fn the_diff_cut_is_the_labs() {
     let c: Cuts = read("diff_cut.json");
     for (i, it) in c.items.iter().enumerate() {
-        assert_eq!(model::cut_diff(&it.raw), it.cut, "item {i}: cut_diff differs from corta");
+        assert_eq!(model::cut_diff(&it.raw, model::DIFF_CHARS), it.cut, "item {i}: cut_diff differs from corta");
     }
     eprintln!("{} raw diffs: cut_diff equal to corta", c.items.len());
 }
