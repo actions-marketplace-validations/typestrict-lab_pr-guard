@@ -24,7 +24,7 @@ inputs:
     description: Extra arguments for `pr-guard check` (for example `--no-model` or `--label pr-guard:skip`).
     default: ""
   upload-sarif:
-    description: Upload the findings to code scanning (needs `security-events: write`).
+    description: "Upload the findings to code scanning (needs `security-events: write`)."
     default: "true"
 
 outputs:

@@ -99,7 +99,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: typestrict-lab/pr-guard@v0.1.0
+      - uses: typestrict-lab/pr-guard@v1
         with:
           mode: shadow        # or enforce; empty keeps the policy's mode
           # policy: .github/pr-guard.yml

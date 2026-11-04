@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: typestrict-lab/pr-guard@v0.1.0
+      - uses: typestrict-lab/pr-guard@v1
 ```
 
 It starts in **shadow mode**: it reports on every pull request and never fails one. When its answers look right on your
