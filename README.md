@@ -50,6 +50,32 @@ weighs in the score. The text report
 marks a rule answer with `(by rule)`, the JSON verdict with `change_type_source` and `tests_source` (`rule` or `model`)
 next to `tests_applicable`, and the log on stderr with `pr-guard: prg-tipo rule <type>`.
 
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/typestrict-lab/pr-guard/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/typestrict-lab/pr-guard/main/install.sh | sh -s -- 0.1.0 --dir /usr/local/bin
+```
+
+The script picks the build for the machine, checks the archive against the SHA-256 published next to it and installs
+into `~/.local/bin` (or `--dir`; `PR_GUARD_VERSION` and `PR_GUARD_INSTALL_DIR` work too). Other ways:
+
+| Where | How |
+|---|---|
+| Release archives | `pr-guard-<target>.tar.gz` (Windows also `.zip`) on the [releases](https://github.com/typestrict-lab/pr-guard/releases), with `SHA256SUMS` |
+| Homebrew | `brew install typestrict-lab/tap/pr-guard` once the formula attached to each release (`pr-guard.rb`) is in the tap |
+| Docker | `ghcr.io/typestrict-lab/pr-guard:0.1.0`, linux/amd64 and linux/arm64, with the model inside |
+| Cargo | `cargo install --git https://github.com/typestrict-lab/pr-guard --tag v0.1.0` |
+
+Builds: Linux x64 and arm64 (built on Ubuntu 22.04, so glibc 2.35 or newer; no musl/Alpine build, use the Docker image
+there), macOS arm64 and x64, Windows x64. Each archive is self-contained: unpack it anywhere and run.
+
+The image runs in the repository mounted at `/repo`:
+
+```sh
+docker run --rm -v "$PWD:/repo" ghcr.io/typestrict-lab/pr-guard:0.1.0 check --base origin/main
+```
+
 ## Usage
 
 ```sh
@@ -200,6 +226,102 @@ repos:
 The hook runs `pr-guard check --staged --no-model`: secrets, sensitive paths, destructive SQL and size on the staged
 changes, without the model, in well under a second.
 
+Without the binary installed, `id: pr-guard-docker` runs the same check in the Docker image.
+
+## Other CIs
+
+Each integration is a thin shell: it installs pr-guard (or uses the image), runs `pr-guard check` and hands the findings
+to the CI's own report. None checks out or runs code from the pull request; pr-guard only reads the diff. All need the
+history for the merge base (no shallow clone) and fetch the target branch themselves. `mode` left empty keeps the
+policy's mode, shadow by default; `enforce` fails the job when the policy blocks. The sources are under
+`integrations/`.
+
+### GitLab CI
+
+A [CI/CD component](integrations/gitlab/templates/pr-guard.yml) that runs on merge request pipelines in the Docker
+image. Findings go to the merge request through Code Quality and the test report.
+
+```yaml
+include:
+  - component: $CI_SERVER_FQDN/typestrict-lab/pr-guard/pr-guard@0.1.0
+    inputs:
+      mode: shadow
+```
+
+The catalog needs the component in a GitLab project (`templates/` at its root, mirrored from `integrations/gitlab/`).
+Until then, or on a self-managed GitLab, include the file with `include: remote:` and the same `inputs`.
+
+### Bitbucket Pipelines
+
+A [pipe](integrations/bitbucket/) on top of the Docker image; the JUnit report lands in `test-results/`, which Pipelines
+shows on the pull request.
+
+```yaml
+pipelines:
+  pull-requests:
+    '**':
+      - step:
+          name: pr-guard
+          clone:
+            depth: full
+          script:
+            - pipe: docker://ghcr.io/typestrict-lab/pr-guard-bitbucket-pipe:0.1.0
+              variables:
+                MODE: shadow
+                # POLICY: .github/pr-guard.yml
+                # ARGS: --no-model
+```
+
+### CircleCI
+
+An [orb](integrations/circleci/orb.yml) with an `install` command, a `check` command and a `check` job (`cimg/base`,
+model cached per version, JUnit to the test results). CircleCI does not say which branch a pull request targets, so
+pass it as `base`.
+
+```yaml
+version: 2.1
+orbs:
+  pr-guard: typestrict-lab/pr-guard@0.1.0
+workflows:
+  review:
+    jobs:
+      - pr-guard/check:
+          base: main
+          mode: shadow
+```
+
+### Bitrise
+
+A [step](integrations/bitrise/step.yml) that installs the binary and writes the JUnit report to the Tests tab
+(`BITRISE_TEST_DEPLOY_DIR`); outputs `PR_GUARD_EXIT_CODE` and `PR_GUARD_COMMENT_PATH`. Run it after Git Clone with full
+history.
+
+```yaml
+- git::https://github.com/typestrict-lab/pr-guard.git@v0.1.0:
+    inputs:
+      - mode: shadow
+```
+
+Bitrise reads `step.yml` from the root of the repository it points at, so this works once the step is in the StepLib
+or in a repository of its own; the files in `integrations/bitrise/` are that repository.
+
+### Jenkins
+
+No plugin: the [Jenkinsfile example](integrations/jenkins/Jenkinsfile) runs the Docker image on pull request builds of a
+multibranch pipeline (`CHANGE_TARGET`, `CHANGE_TITLE`) and publishes the JUnit report.
+
+```groovy
+stage('pr-guard') {
+  when { changeRequest() }
+  agent { docker { image 'ghcr.io/typestrict-lab/pr-guard:0.1.0'; args '--entrypoint=""'; reuseNode true } }
+  steps {
+    sh 'git fetch --quiet origin "+refs/heads/${CHANGE_TARGET}:refs/remotes/origin/${CHANGE_TARGET}"'
+    sh 'pr-guard check --format junit --output pr-guard.xml --format text --output -'
+  }
+  post { always { junit allowEmptyResults: true, testResults: 'pr-guard.xml' } }
+}
+```
+
 ## Examples
 
 `examples/` has small projects in several languages with pull requests that plant real problems (SQL injection, a
@@ -215,6 +337,30 @@ bash examples/run.sh
 cargo test                                         # parity tests skip without the weights
 PR_GUARD_MODEL=/path/to/model cargo test --release
 ```
+
+### Releases
+
+A `v*` tag (matching `version` in `Cargo.toml`) runs `.github/workflows/release.yml`: it builds every target, runs each
+archive against the real model, attaches the archives, their `.sha256`, `SHA256SUMS` and the Homebrew formula to the
+GitHub release, and pushes the multi-arch image to `ghcr.io/typestrict-lab/pr-guard` (plus the Bitbucket Pipe image).
+`scripts/fetch-model.sh` pins the model revision and hashes for the image and the smoke test; bump it with `src/pull.rs`.
+
+### How ONNX Runtime is linked
+
+`ort` with `download-binaries` links pyke's prebuilt ONNX Runtime (1.28) **statically** where pyke ships one; elsewhere
+the build links Microsoft's shared library and the archive carries it next to the binary.
+
+| Target | ONNX Runtime | Ships next to the binary | Other runtime dependencies |
+|---|---|---|---|
+| `x86_64-unknown-linux-gnu` | static (pyke) | nothing | glibc, libstdc++, libgcc_s |
+| `aarch64-unknown-linux-gnu` | static (pyke) | nothing | glibc, libstdc++, libgcc_s |
+| `aarch64-apple-darwin` | static (pyke, CoreML build) | nothing | system libc++, Foundation, CoreML |
+| `x86_64-apple-darwin` | shared: Microsoft's 1.23.2, their last macOS x64 build (`ORT_LIB_PATH`, `ORT_PREFER_DYNAMIC_LINK`, rpath `@executable_path`); cross-compiled on Apple silicon | `libonnxruntime.1.23.2.dylib` | system libc++ |
+| `x86_64-pc-windows-msvc` | static (pyke, DirectML build) | `DirectML.dll` (imported at load; Windows' own copy is older) | the Visual C++ runtime (`vcruntime140.dll`), as any Rust MSVC binary |
+
+pr-guard asks for ONNX Runtime's C API version 17, so the 1.23.2 library on macOS x64 is enough and gives the same
+answers as the static 1.28 build (same probabilities on a smoke diff, run under Rosetta). There is no musl build: pyke ships none and
+Microsoft's Linux builds link glibc.
 
 ## License
 
