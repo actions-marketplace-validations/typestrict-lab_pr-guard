@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use pr_guard::format::{self, Format};
 use pr_guard::policy::{Mode, Policy};
 use pr_guard::verdict::Source;
-use pr_guard::{ci, diff, facts, git, model, pull, report, rules, verdict};
+use pr_guard::{ci, diff, facts, git, host, model, pull, report, rules, verdict};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -73,6 +73,19 @@ enum Cmd {
         /// Where to write the sticky comment's markdown (same as `--format markdown --output <PATH>`).
         #[arg(long, value_name = "PATH")]
         comment: Option<PathBuf>,
+        /// The pull request number on the host; default the CI's.
+        #[arg(long)]
+        pr: Option<String>,
+        /// Print only: no comment, labels or statuses on the host even with a token.
+        #[arg(long)]
+        no_publish: bool,
+    },
+    /// Re-count a pull request's approvals against the verdict in pr-guard's comment and set `pr-guard/reviewers`, without
+    /// the diff or the model (for review events).
+    Reviewers {
+        /// The pull request number on the host; default the CI's.
+        #[arg(long)]
+        pr: Option<String>,
     },
     /// Print the default policy, to start a `.github/pr-guard.yml`.
     Init,
@@ -112,7 +125,7 @@ fn run() -> anyhow::Result<()> {
         }
         Cmd::Check {
             diff: diff_path, staged, base, head, answers, description, description_file, no_model, model: model_dir, threads, policy,
-            mode, labels, format, output, comment,
+            mode, mut labels, format, output, comment, pr, no_publish,
         } => {
             let targets = targets(format, output, comment)?;
             let mut policy = Policy::load(&policy)?;
@@ -122,7 +135,18 @@ fn run() -> anyhow::Result<()> {
                     ModeArg::Enforce => Mode::Enforce,
                 };
             }
-            let ci = ci::detect(&ci::Env::from_process());
+            let env = ci::Env::from_process();
+            let ci = ci::detect(&env);
+            let http = host::Ureq::new();
+            let target = if no_publish { None } else { target(&env, pr.as_deref(), ci.is_some()) };
+            // The pull request's own labels, so the skip label works without `--label` in the pipeline.
+            if let Some(t) = &target {
+                match host::labels(&http, t) {
+                    Ok(l) => labels.extend(l),
+                    Err(e) => eprintln!("pr-guard: warning: could not read the labels on {}: {e:#}", t.kind.name()),
+                }
+            }
+            let skip = labels.contains(&policy.skip_label);
             let cwd = std::path::Path::new(".");
             let source = match &diff_path {
                 Some(_) => None,
@@ -158,7 +182,7 @@ fn run() -> anyhow::Result<()> {
             };
             if raw.trim().is_empty() {
                 eprintln!("pr-guard: no changes to check");
-            } else if answers == verdict::Answers::default() {
+            } else if answers == verdict::Answers::default() && !skip {
                 // What the changed files settle first, free and the same without the model; the model only gets the rest.
                 answer_by_rule(&mut answers, &facts::files(&raw));
                 if !no_model {
@@ -178,12 +202,44 @@ fn run() -> anyhow::Result<()> {
                     None => print!("{}", format::render(f, &v, color)),
                 }
             }
+            // Failures are warnings: the exit code stays the verdict's.
+            if let Some(t) = &target {
+                for e in host::publish(&http, &env, t, &policy, &v, &report::comment(&v)) {
+                    eprintln!("pr-guard: warning: could not publish to {}: {e}", t.kind.name());
+                }
+            }
             if v.blocked {
                 std::process::exit(1);
             }
         }
+        Cmd::Reviewers { pr } => {
+            let env = ci::Env::from_process();
+            let t = host::target(&env, origin().as_deref(), pr.as_deref()).map_err(|s| anyhow::anyhow!("cannot reach the host: {s}"))?;
+            match host::reviewers(&host::Ureq::new(), &env, &t)? {
+                Some(d) => eprintln!("pr-guard: {} {}#{}: {d}", t.kind.name(), t.repo, t.pr),
+                None => eprintln!("pr-guard: no pr-guard verdict on {} {}#{} yet: nothing to enforce", t.kind.name(), t.repo, t.pr),
+            }
+        }
     }
     Ok(())
+}
+
+/// The `origin` remote's URL, when there is a clone at hand.
+fn origin() -> Option<String> {
+    git::git(std::path::Path::new("."), &["remote", "get-url", "origin"]).ok().map(|u| u.trim().to_string())
+}
+
+/// The pull request on its host, when there is a token and a number; on a laptop nothing is said about it.
+fn target(env: &ci::Env, pr: Option<&str>, in_ci: bool) -> Option<host::Target> {
+    match host::target(env, origin().as_deref(), pr) {
+        Ok(t) => Some(t),
+        Err(skip) => {
+            if in_ci {
+                eprintln!("pr-guard: not publishing: {skip}");
+            }
+            None
+        }
+    }
 }
 
 /// Pairs each --format with its --output (`None` = stdout): one --output per --format in order, or a single --format to

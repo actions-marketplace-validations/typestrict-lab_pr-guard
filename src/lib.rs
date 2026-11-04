@@ -3,6 +3,7 @@ pub mod diff;
 pub mod facts;
 pub mod format;
 pub mod git;
+pub mod host;
 pub mod lang;
 pub mod model;
 pub mod policy;

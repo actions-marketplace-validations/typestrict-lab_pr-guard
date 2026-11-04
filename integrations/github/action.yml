@@ -5,6 +5,12 @@ branding:
   color: blue
 
 inputs:
+  command:
+    description: "check (review the diff and publish the verdict) or reviewers (re-count approvals on a review event)."
+    default: check
+  token:
+    description: Token for the comment, labels and statuses; empty prints only.
+    default: ${{ github.token }}
   version:
     description: pr-guard release to install.
     default: "0.1.0"
@@ -56,6 +62,7 @@ runs:
 
     # The weights (~150 MB) download once per version, not on every pull request.
     - name: Cache the model
+      if: ${{ inputs.command == 'check' }}
       uses: actions/cache@v4
       with:
         path: ~/.cache/pr-guard
@@ -63,9 +70,12 @@ runs:
 
     - name: Check
       id: check
+      if: ${{ inputs.command == 'check' }}
       shell: bash
       # Inputs through the environment, never pasted into the script: a policy path or args cannot inject shell.
+      # pr-guard itself writes the sticky comment, the labels and the statuses with the token.
       env:
+        GITHUB_TOKEN: ${{ inputs.token }}
         MODE: ${{ inputs.mode }}
         POLICY: ${{ inputs.policy }}
         ARGS: ${{ inputs.args }}
@@ -82,13 +92,22 @@ runs:
 
     # Upload before failing the job, so a blocked pull request still shows its findings.
     - name: Upload SARIF
-      if: ${{ always() && inputs.upload-sarif == 'true' && hashFiles('pr-guard.sarif') != '' }}
+      if: ${{ always() && inputs.command == 'check' && inputs.upload-sarif == 'true' && hashFiles('pr-guard.sarif') != '' }}
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: pr-guard.sarif
         category: pr-guard
 
+    # No diff and no model: the verdict comes from the sticky comment.
+    - name: Reviewers
+      if: ${{ inputs.command == 'reviewers' }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: pr-guard reviewers
+
     - name: Result
+      if: ${{ inputs.command == 'check' }}
       shell: bash
       env:
         CODE: ${{ steps.check.outputs.exit-code }}

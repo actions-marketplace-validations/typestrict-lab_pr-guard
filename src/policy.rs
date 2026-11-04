@@ -108,6 +108,26 @@ impl Default for Rules {
     }
 }
 
+/// What `check` writes on the pull request when it has a host token (`host`); each part can be turned off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Publish {
+    /// The sticky comment, which also keeps the verdict for `pr-guard reviewers`.
+    pub comment: bool,
+    /// `pr-guard:reviewers-N`, `pr-guard:blocked` and the others in the verdict (no labels on Bitbucket).
+    pub labels: bool,
+    /// The `pr-guard` commit status: failure only when the policy blocks.
+    pub status: bool,
+    /// Required approvals: the `pr-guard/reviewers` status (GitHub, Bitbucket) or the approval rule (GitLab).
+    pub reviewers: bool,
+}
+
+impl Default for Publish {
+    fn default() -> Self {
+        Publish { comment: true, labels: true, status: true, reviewers: true }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct Policy {
@@ -122,6 +142,7 @@ pub struct Policy {
     pub rules: Rules,
     /// Languages the model was evaluated on; code in any other language is "not evaluated" and never auto-merges.
     pub languages: Vec<String>,
+    pub publish: Publish,
 }
 
 impl Default for Policy {
@@ -148,6 +169,7 @@ impl Default for Policy {
             block_on: Some(Level::Danger),
             rules: Rules::default(),
             languages: crate::lang::SUPPORTED.iter().map(|s| s.to_string()).collect(),
+            publish: Publish::default(),
         }
     }
 }
@@ -184,6 +206,8 @@ mod tests {
         assert_eq!(p.mode, Mode::Enforce);
         assert!(p.rules.size.is_none() && p.rules.secrets.is_some());
         assert_eq!(p.reviewers, Policy::default().reviewers);
+        let p = Policy::from_yaml("publish:\n  labels: false\n").unwrap();
+        assert!(!p.publish.labels && p.publish.comment && p.publish.reviewers);
     }
 
     #[test]

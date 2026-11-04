@@ -9,10 +9,11 @@ No API, no key, no telemetry: the code never leaves the machine.
 
 ## Status
 
-Early. The CLI reads the change from git, detects the CI it runs on and writes the formats most CIs show (SARIF,
-GitLab Code Quality, JUnit). Host integrations (comment, labels and status through the GitHub, GitLab and Bitbucket
-APIs) and releases come next. The model is the first multi-task TS-PRGuard; the default policy runs in
-shadow mode (report, never fail): set `mode: enforce` once the guard's answers on your own pull requests look right.
+Early. The CLI reads the change from git, detects the CI it runs on, writes the formats most CIs show (SARIF,
+GitLab Code Quality, JUnit) and, with a token, publishes the verdict on GitHub, GitLab or Bitbucket (sticky comment,
+labels, statuses, required reviewers). Releases come next. The model is the first multi-task TS-PRGuard; the default
+policy runs in shadow mode (report, never fail): set `mode: enforce` once the guard's answers on your own pull requests
+look right.
 
 ## The questions
 
@@ -58,6 +59,8 @@ pr-guard check --base origin/release --head my-branch
 pr-guard check --staged --no-model          # the staged changes, deterministic checks only (pre-commit)
 git diff main... | pr-guard check --diff -  # any diff, from stdin or a file
 pr-guard check --format sarif --output pr-guard.sarif --format markdown --output pr-guard.md
+pr-guard check --pr 42                      # publish to pull request 42 (needs a host token)
+pr-guard reviewers                          # on a review event: re-count approvals against the stored verdict
 ```
 
 Exit code: 0 passed, 1 blocked by the policy, 2 usage or runtime error. Shadow mode always exits 0; `--mode shadow` or
@@ -83,9 +86,9 @@ messages of the range, newest first.
 ### CI detection
 
 pr-guard reads the environment of GitHub Actions, GitLab CI, Bitbucket Pipelines, Jenkins, CircleCI, Bitrise, Buildkite
-and Azure Pipelines to find the base branch, the head commit, the pull request number and the repository. It makes no
-network call. With no CI it runs as on a laptop. On GitHub Actions it also prints workflow commands, so each finding
-shows as an annotation on its file and line.
+and Azure Pipelines to find the base branch, the head commit, the pull request number and the repository. Detection
+makes no network call. With no CI it runs as on a laptop. On GitHub Actions it also prints workflow commands, so each
+finding shows as an annotation on its file and line.
 
 ### Output formats
 
@@ -103,17 +106,61 @@ shows as an annotation on its file and line.
 
 In JUnit a case fails at danger level and the verdict case fails when the policy blocks; nothing fails in shadow mode.
 
+## Publishing to the host
+
+Where the pull request lives is a separate question from where the job runs: a Jenkins job can review a GitHub pull
+request. pr-guard reads the host from the `origin` remote and, when it has a token and a pull request number, writes:
+
+| What | GitHub | GitLab | Bitbucket Cloud |
+|---|---|---|---|
+| Sticky comment (created once, then edited) | issue comment | merge request note | pull request comment |
+| Labels `pr-guard:reviewers-N`, `pr-guard:blocked`, `pr-guard:type-…`, `pr-guard:not-evaluated`, `pr-guard:auto-merge` | yes | yes | no labels on Bitbucket |
+| Status `pr-guard`: failure only when the policy blocks (never in shadow mode) | commit status | commit status | build status |
+| Required reviewers | status `pr-guard/reviewers`, pending until N approvals | the merge request's `pr-guard` approval rule (`approvals_required`, Premium) | build status `pr-guard/reviewers`, failed until N approvals |
+
+| Host | Found by | Token |
+|---|---|---|
+| GitHub | `github.com`, or the runner's `GITHUB_SERVER_URL` (Enterprise Server, API from `GITHUB_API_URL`) | `GITHUB_TOKEN` (or `GH_TOKEN`) |
+| GitLab | `gitlab.com`, or the job's `CI_SERVER_URL` (self-managed, API from `CI_API_V4_URL`) | `GITLAB_TOKEN`: a project access token with the `api` scope; `CI_JOB_TOKEN` cannot write notes, labels or statuses |
+| Bitbucket | `bitbucket.org` | `BITBUCKET_TOKEN`: a repository access token (Bearer), or an API token with `BITBUCKET_USERNAME` (Basic) |
+
+`PR_GUARD_HOST` (`github`, `gitlab`, `bitbucket`) and `PR_GUARD_API_URL` name a self-hosted server the CI does not
+describe (Jenkins against GitHub Enterprise, say). The pull request number comes from the CI, or `--pr`. Without a token
+or a number pr-guard only prints, as on a laptop; `--no-publish` prints only even with both. A failed API call is a
+warning on stderr and never changes the exit code. The policy can turn each part off:
+
+```yaml
+publish:
+  comment: true
+  labels: true      # the skip label is never removed; only pr-guard:* labels move
+  status: true
+  reviewers: true
+```
+
+The comment ends with the verdict as JSON inside an HTML comment (head commit, reviewers, shadow, blocked). `pr-guard
+reviewers` reads it back on a review event, counts the approvals and updates `pr-guard/reviewers` without the diff or
+the model; a verdict for an older commit leaves the status waiting for the next check. Only comments written by the
+token's own account are read or edited, so a pasted copy of the marker cannot lower the number of reviewers. When the
+token cannot say who it is (GitHub's `GITHUB_TOKEN` outside Actions, some Bitbucket tokens), set `PR_GUARD_BOT` to the
+account's login (GitHub, GitLab) or `account_id` (Bitbucket); on GitHub Actions it is `github-actions[bot]`.
+
+To make the reviewers binding, add `pr-guard` and `pr-guard/reviewers` to the required status checks (GitHub branch
+protection or ruleset) or enable the "passing builds" merge check (Bitbucket). On GitLab the approval rule is enforced
+by GitLab itself; on GitLab Free, where merge request approval rules do not exist, the call fails with a warning.
+
 ## GitHub Action
 
 `integrations/github/action.yml` installs a released binary, caches the model in `~/.cache/pr-guard`, runs
-`pr-guard check` and uploads the SARIF to code scanning. The sticky comment's markdown goes to `pr-guard.md` and to the
-job summary.
+`pr-guard check` with the workflow's token (comment, labels, statuses and required reviewers, as above) and uploads the
+SARIF to code scanning. The sticky comment's markdown also goes to `pr-guard.md` and to the job summary.
 
 ```yaml
 on: pull_request
 permissions:
   contents: read
-  security-events: write
+  pull-requests: write   # comment and labels
+  statuses: write        # pr-guard and pr-guard/reviewers
+  security-events: write # SARIF
 jobs:
   pr-guard:
     runs-on: ubuntu-latest
@@ -127,7 +174,14 @@ jobs:
           # policy: .github/pr-guard.yml
           # args: --label something
           # version: 0.1.0
+          # token: ''         # print only
 ```
+
+The required reviewers are re-counted on each review by a second, small workflow,
+[`integrations/github/examples/pr-guard-reviews.yml`](integrations/github/examples/pr-guard-reviews.yml): it runs the
+action with `command: reviewers` on `pull_request_review`, needs no checkout, and finishes in seconds. On pull requests
+from forks GitHub hands both workflows a read-only token: the verdict is then printed and in the job summary, but not
+published.
 
 The action never runs code from the pull request: it only reads the diff that the checkout already brought.
 
