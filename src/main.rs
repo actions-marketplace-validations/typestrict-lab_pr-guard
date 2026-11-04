@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use pr_guard::format::{self, Format};
 use pr_guard::policy::{Mode, Policy};
 use pr_guard::verdict::Source;
-use pr_guard::{ci, diff, facts, git, model, report, rules, verdict};
+use pr_guard::{ci, diff, facts, git, model, pull, report, rules, verdict};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -76,6 +76,22 @@ enum Cmd {
     },
     /// Print the default policy, to start a `.github/pr-guard.yml`.
     Init,
+    /// The model package.
+    Model {
+        #[command(subcommand)]
+        cmd: ModelCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModelCmd {
+    /// Download the package from Hugging Face ahead of time (Docker images, runners without internet at check time);
+    /// `check` downloads it on first use otherwise.
+    Pull {
+        /// Directory to write it to; default the cache (`$PR_GUARD_MODEL`, `$PR_GUARD_CACHE`, `~/.cache/pr-guard`).
+        #[arg(long)]
+        dir: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -89,6 +105,11 @@ fn main() {
 fn run() -> anyhow::Result<()> {
     match Cli::parse().cmd {
         Cmd::Init => print!("{}", serde_yaml::to_string(&Policy::default())?),
+        Cmd::Model { cmd: ModelCmd::Pull { dir } } => {
+            let dir = dir.or_else(model::default_dir).context("no model directory: pass --dir, set PR_GUARD_MODEL or HOME")?;
+            pull::pull(&dir, false)?;
+            println!("{}", dir.display());
+        }
         Cmd::Check {
             diff: diff_path, staged, base, head, answers, description, description_file, no_model, model: model_dir, threads, policy,
             mode, labels, format, output, comment,
@@ -231,10 +252,16 @@ fn apply(answers: &mut verdict::Answers, q: &model::Question, p: &[f64]) {
 
 fn ask_model(answers: &mut verdict::Answers, dir: Option<PathBuf>, threads: Option<usize>, description: Option<&str>, raw_diff: &str) -> anyhow::Result<()> {
     let description = description.map(model::py_strip).filter(|d| !d.is_empty());
+    // A directory the user named is used as it is; the default one is the cache, filled (or brought up to this release's
+    // model) from Hugging Face on first use.
+    let named = dir.is_some() || std::env::var_os("PR_GUARD_MODEL").is_some();
     let dir = dir.or_else(model::default_dir).context("no model directory: pass --model, set PR_GUARD_MODEL or HOME")?;
+    if !named {
+        pull::pull(&dir, false).context("getting the model (run with --no-model for the deterministic checks only)")?;
+    }
     anyhow::ensure!(
         dir.join("decision_ai.json").exists() || dir.join("pr_guard_model.json").exists(),
-        "no model weights in {} (pass --model <dir>, set PR_GUARD_MODEL, or run with --no-model; the download from Hugging Face is not implemented yet)",
+        "no model weights in {} (pass --model <dir>, set PR_GUARD_MODEL, or run with --no-model)",
         dir.display()
     );
     let threads = threads.unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |n| n.get()));

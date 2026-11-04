@@ -6,6 +6,7 @@ pub mod git;
 pub mod lang;
 pub mod model;
 pub mod policy;
+pub mod pull;
 pub mod report;
 pub mod rules;
 pub mod verdict;

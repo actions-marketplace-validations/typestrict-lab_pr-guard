@@ -11,7 +11,7 @@ No API, no key, no telemetry: the code never leaves the machine.
 
 Early. The CLI reads the change from git, detects the CI it runs on and writes the formats most CIs show (SARIF,
 GitLab Code Quality, JUnit). Host integrations (comment, labels and status through the GitHub, GitLab and Bitbucket
-APIs), the model download and releases come next. The model is the first multi-task TS-PRGuard; its answers are not yet
+APIs) and releases come next. The model is the first multi-task TS-PRGuard; its answers are not yet
 tuned into blocking thresholds, so start every repository in shadow mode.
 
 ## The questions
@@ -63,8 +63,11 @@ pr-guard check --format sarif --output pr-guard.sarif --format markdown --output
 Exit code: 0 passed, 1 blocked by the policy, 2 usage or runtime error. Shadow mode always exits 0; `--mode shadow` or
 `--mode enforce` overrides the policy's mode.
 
-The model package (`decision_ai.json`, `tokenizer.json`, `onnx/model_8bit.onnx`) is read from `--model`,
-`$PR_GUARD_MODEL`, or `~/.cache/pr-guard/ts-prguard` (`$PR_GUARD_CACHE` to move the cache).
+The model package (`decision_ai.json`, `tokenizer.json`, `onnx/model_8bit.onnx`, 168 MB) is read from `--model`,
+`$PR_GUARD_MODEL`, or `~/.cache/pr-guard/ts-prguard` (`$PR_GUARD_CACHE` to move the cache). The cache is filled from
+[typestrict/TS-PRGuard](https://huggingface.co/typestrict/TS-PRGuard) on first use, at the revision this release was
+tested with, and every file is checked against its SHA-256 before it is used. `pr-guard model pull` downloads it ahead
+of time (Docker images, runners without internet at check time); `$PR_GUARD_HF_ENDPOINT` points at a mirror.
 
 ### Where the change comes from
 
