@@ -81,7 +81,7 @@ In JUnit a case fails at danger level and the verdict case fails when the policy
 
 ## GitHub Action
 
-`integrations/github/action.yml` installs a released binary, caches the model in `~/.cache/pr-guard`, runs
+The action (`action.yml` at the root of this repository, on the GitHub Marketplace) installs a released binary, caches the model in `~/.cache/pr-guard`, runs
 `pr-guard check` with the workflow's token (comment, labels and the status, see [publishing to the host](hosts.md)) and uploads the
 SARIF to code scanning. The sticky comment's markdown also goes to `pr-guard.md` and to the job summary.
 
@@ -99,7 +99,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: typestrict-lab/pr-guard/integrations/github@main
+      - uses: typestrict-lab/pr-guard@v0.1.0
         with:
           mode: shadow        # or enforce; empty keeps the policy's mode
           # policy: .github/pr-guard.yml
