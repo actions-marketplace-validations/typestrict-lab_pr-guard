@@ -210,6 +210,11 @@ fn question_message(q: Question, a: &Answers) -> String {
 mod tests {
     use super::*;
 
+    /// The default policy enforcing, which these tests decide under (the default itself is shadow).
+    fn enforce() -> Policy {
+        Policy { mode: Mode::Enforce, ..Policy::default() }
+    }
+
     fn code(path: &str) -> FileChange {
         FileChange { path: path.into(), deleted: false, added: vec![(1, "x".into())], removed: 0 }
     }
@@ -224,10 +229,10 @@ mod tests {
     #[test]
     fn a_clean_change_needs_no_reviewer_and_auto_merges_only_when_the_policy_allows() {
         let files = [code("src/a.ts")];
-        let v = decide(&Policy::default(), &files, &good(), &[], vec![]);
+        let v = decide(&enforce(), &files, &good(), &[], vec![]);
         assert_eq!((v.reviewers, v.auto_merge, v.blocked), (0, false, false));
         assert!(v.score.unwrap() >= 0.85);
-        let p = Policy { auto_merge: true, ..Policy::default() };
+        let p = Policy { auto_merge: true, ..enforce() };
         let v = decide(&p, &files, &good(), &[], vec![]);
         assert!(v.auto_merge);
         assert_eq!(v.labels, ["pr-guard:reviewers-0", "pr-guard:auto-merge", "pr-guard:type-fix"]);
@@ -236,11 +241,11 @@ mod tests {
     #[test]
     fn a_likely_vulnerability_warns_by_default_and_blocks_where_the_policy_makes_it_a_danger_unless_shadow() {
         let a = Answers { vulnerability: Some(0.8), cwe: Some("CWE-89".into()), ..good() };
-        let v = decide(&Policy::default(), &[code("src/db.py")], &a, &[], vec![]);
+        let v = decide(&enforce(), &[code("src/db.py")], &a, &[], vec![]);
         assert_eq!((v.findings[0].level, v.blocked), (Level::Warning, false));
         assert!(v.reviewers >= 1);
         assert_eq!(v.findings[0].message, "May introduce a vulnerability (80%, likely CWE-89)");
-        let mut strict = Policy::default();
+        let mut strict = enforce();
         strict.questions.get_mut(&Question::Vulnerability).unwrap().min = Some(0.4);
         let v = decide(&strict, &[code("src/db.py")], &a, &[], vec![]);
         assert_eq!((v.reviewers, v.blocked), (2, true));
@@ -251,7 +256,7 @@ mod tests {
 
     #[test]
     fn uncovered_languages_and_warnings_ask_for_at_least_one_reviewer_and_never_auto_merge() {
-        let p = Policy { auto_merge: true, ..Policy::default() };
+        let p = Policy { auto_merge: true, ..enforce() };
         let v = decide(&p, &[code("src/a.ts"), code("native/b.cpp")], &good(), &[], vec![]);
         assert_eq!((v.reviewers, v.auto_merge), (1, false));
         assert_eq!(v.not_evaluated, ["c++"]);
@@ -262,11 +267,11 @@ mod tests {
 
     #[test]
     fn the_skip_label_skips_and_a_docs_only_change_with_no_answers_needs_nobody() {
-        let v = decide(&Policy::default(), &[code("src/a.ts")], &good(), &["pr-guard:skip".into()], vec![]);
+        let v = decide(&enforce(), &[code("src/a.ts")], &good(), &["pr-guard:skip".into()], vec![]);
         assert!(v.skipped && !v.blocked);
-        let v = decide(&Policy::default(), &[code("README.md")], &Answers::default(), &[], vec![]);
+        let v = decide(&enforce(), &[code("README.md")], &Answers::default(), &[], vec![]);
         assert_eq!((v.score, v.reviewers), (None, 0));
-        let v = decide(&Policy::default(), &[code("src/a.go")], &Answers::default(), &[], vec![]);
+        let v = decide(&enforce(), &[code("src/a.go")], &Answers::default(), &[], vec![]);
         assert_eq!(v.reviewers, 2);
     }
 }

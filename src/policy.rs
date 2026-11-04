@@ -128,7 +128,8 @@ impl Default for Policy {
     fn default() -> Self {
         let g = |weight, warn_below, min| Gate { weight, warn_below, min };
         Policy {
-            mode: Mode::Enforce,
+            // Shadow until a repository has seen what the guard says on its own pull requests: report, never fail.
+            mode: Mode::Shadow,
             skip_label: "pr-guard:skip".into(),
             questions: BTreeMap::from([
                 (Question::DescriptionMatches, g(2.0, Some(0.6), Some(0.3))),
@@ -179,8 +180,8 @@ mod tests {
     #[test]
     fn empty_file_is_the_default_and_partial_files_keep_the_other_defaults() {
         assert_eq!(Policy::from_yaml("").unwrap(), Policy::default());
-        let p = Policy::from_yaml("mode: shadow\nrules:\n  size: null\n").unwrap();
-        assert_eq!(p.mode, Mode::Shadow);
+        let p = Policy::from_yaml("mode: enforce\nrules:\n  size: null\n").unwrap();
+        assert_eq!(p.mode, Mode::Enforce);
         assert!(p.rules.size.is_none() && p.rules.secrets.is_some());
         assert_eq!(p.reviewers, Policy::default().reviewers);
     }
@@ -196,8 +197,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("pr-guard-policy-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("policy.yml");
-        std::fs::write(&file, "mode: shadow\n").unwrap();
-        assert_eq!(Policy::load(&file).unwrap().mode, Mode::Shadow);
+        std::fs::write(&file, "mode: enforce\n").unwrap();
+        assert_eq!(Policy::load(&file).unwrap().mode, Mode::Enforce);
         assert_eq!(Policy::load(&dir.join("absent.yml")).unwrap(), Policy::default());
         assert_eq!(Policy::load(&file.join("none")).unwrap(), Policy::default());
         #[cfg(unix)]

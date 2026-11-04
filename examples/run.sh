@@ -40,6 +40,7 @@ for scenario in "$here"/*/scenarios/*/; do
     --diff "$rel/change.diff" \
     --description-file "$rel/description.md" \
     --policy "$policy" \
+    --mode enforce \
     --comment "$rel/comment.md" 2>&1 >/dev/null)" || status=$?
 
   grep '^pr-guard:' <<<"$stderr" | sed 's/^/    /' || true
