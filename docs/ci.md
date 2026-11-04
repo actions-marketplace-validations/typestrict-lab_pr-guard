@@ -17,7 +17,7 @@ into `~/.local/bin` (or `--dir`; `PR_GUARD_VERSION` and `PR_GUARD_INSTALL_DIR` w
 | Docker | `ghcr.io/typestrict-lab/pr-guard:0.1.0`, linux/amd64 and linux/arm64, with the model inside |
 | Cargo | `cargo install --git https://github.com/typestrict-lab/pr-guard --tag v0.1.0` |
 
-Builds: Linux x64 and arm64 (built on Ubuntu 22.04, so glibc 2.35 or newer; no musl/Alpine build, use the Docker image
+Builds: Linux x64 and arm64 (built on Ubuntu 24.04, so glibc 2.39 or newer, as the static ONNX Runtime needs; no musl/Alpine build, use the Docker image
 there), macOS arm64 and x64, Windows x64. Each archive is self-contained: unpack it anywhere and run.
 
 The image runs in the repository mounted at `/repo`:

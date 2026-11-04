@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://docs.typestrict.ai/en/pr-guard"><img alt="Docs" src="https://img.shields.io/badge/docs-typestrict.ai-FFD400?style=flat-square&labelColor=1A1806"></a>
   <a href="https://huggingface.co/typestrict/TS-PRGuard"><img alt="Model on Hugging Face" src="https://img.shields.io/badge/%F0%9F%A4%97%20model-TS--PRGuard-FFD400?style=flat-square&labelColor=1A1806"></a>
   <a href="https://huggingface.co/typestrict/TS-PRGuard"><img alt="Beats Jev on 4 of 5 questions" src="https://img.shields.io/badge/beats%20Jev-4%20of%205%20questions-FFD400?style=flat-square&labelColor=1A1806"></a>
   <img alt="Runs on the CPU" src="https://img.shields.io/badge/runs%20on-CPU%20%C2%B7%20165%20MB-FFE766?style=flat-square&labelColor=1A1806">
@@ -115,6 +116,8 @@ each key and how to choose the model.
 
 | | |
 |---|---|
+| [Documentation](https://docs.typestrict.ai/en/pr-guard) | the PR Guard guide on docs.typestrict.ai, in English, [Portuguese](https://docs.typestrict.ai/br/pr-guard) and [Spanish](https://docs.typestrict.ai/es/pr-guard) |
+| [Launch post](https://typestrict.ai/blog/pr-guard) | why we built it, what it measures against Jev and its limits |
 | [Policy and model](docs/policy.md) | the file, how a verdict is made, `pr-guard:1`, `latest`, your own Hugging Face repo or a CDN |
 | [Install and CI](docs/ci.md) | install script, Homebrew, Docker, the GitHub Action, pre-commit, GitLab, Bitbucket, CircleCI, Bitrise, Jenkins, output formats |
 | [Publishing to the host](docs/hosts.md) | the comment, labels and status on GitHub, GitLab and Bitbucket, tokens, required reviewers |

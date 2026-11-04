@@ -22,8 +22,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
-          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          # 24.04: pyke's static ONNX Runtime needs glibc 2.38+ and GCC 14's libstdc++ symbols.
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-24.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
           - { target: aarch64-apple-darwin, os: macos-14 }
           - { target: x86_64-apple-darwin, os: macos-14 } # cross-compiled, smoke-tested under Rosetta
           - { target: x86_64-pc-windows-msvc, os: windows-2022 }
@@ -100,7 +101,8 @@ jobs:
         run: |
           set -euo pipefail
           scripts/fetch-model.sh model
-          smoke="$RUNNER_TEMP/smoke"
+          # A POSIX path on Windows too: GNU tar reads `D:\...` as host `D`.
+          smoke="$(cygpath -u "$RUNNER_TEMP" 2>/dev/null || echo "$RUNNER_TEMP")/smoke"
           mkdir -p "$smoke"
           tar -xzf dist/pr-guard-${{ matrix.target }}.tar.gz -C "$smoke"
           run=()
@@ -117,8 +119,8 @@ jobs:
           -    return db.execute("SELECT * FROM users WHERE name = ?", (name,))
           +    return db.execute(f"SELECT * FROM users WHERE name = '{name}'")
           EOF
-          "${run[@]}" "$smoke/pr-guard" --version
-          "${run[@]}" "$smoke/pr-guard" check --diff "$RUNNER_TEMP/smoke.diff" --description "Use an f-string in find_user" \
+          ${run[@]+"${run[@]}"} "$smoke/pr-guard" --version
+          ${run[@]+"${run[@]}"} "$smoke/pr-guard" check --diff "$RUNNER_TEMP/smoke.diff" --description "Use an f-string in find_user" \
             --model model --mode shadow --format json --output "$RUNNER_TEMP/verdict.json"
           cat "$RUNNER_TEMP/verdict.json"
 
@@ -165,8 +167,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - { platform: linux/amd64, os: ubuntu-22.04 }
-          - { platform: linux/arm64, os: ubuntu-22.04-arm }
+          - { platform: linux/amd64, os: ubuntu-24.04 }
+          - { platform: linux/arm64, os: ubuntu-24.04-arm }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
