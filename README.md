@@ -11,7 +11,7 @@ No API, no key, no telemetry: the code never leaves the machine.
 
 Early. The CLI reads the change from git, detects the CI it runs on, writes the formats most CIs show (SARIF,
 GitLab Code Quality, JUnit) and, with a token, publishes the verdict on GitHub, GitLab or Bitbucket (sticky comment,
-labels, statuses, required reviewers). Releases come next. The model is the first multi-task TS-PRGuard; the default
+labels, statuses, required reviewers). No release has been published yet. The model is the first multi-task TS-PRGuard; the default
 policy runs in shadow mode (report, never fail): set `mode: enforce` once the guard's answers on your own pull requests
 look right.
 
