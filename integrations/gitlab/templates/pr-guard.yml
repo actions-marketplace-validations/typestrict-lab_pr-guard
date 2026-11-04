@@ -1,0 +1,63 @@
+# GitLab CI/CD component: pr-guard on every merge request, in the image that already holds the model.
+#
+#   include:
+#     - component: $CI_SERVER_FQDN/typestrict-lab/pr-guard/pr-guard@0.1.0
+#       inputs:
+#         mode: shadow
+#
+# Findings show in the merge request through Code Quality and the test report; the sticky comment's markdown is kept as
+# an artifact. The job never runs code from the merge request: pr-guard only reads the diff git already has.
+spec:
+  inputs:
+    version:
+      description: pr-guard release (the image tag).
+      default: "0.1.0"
+    image:
+      description: The image to run; a mirror of ghcr.io/typestrict-lab/pr-guard where the runners cannot reach GHCR.
+      default: ghcr.io/typestrict-lab/pr-guard
+    stage:
+      default: test
+    mode:
+      description: "shadow (report, never fail) or enforce; empty keeps the policy's mode."
+      default: ""
+      options: ["", shadow, enforce]
+    policy:
+      description: Policy file; a missing file means the default policy.
+      default: .github/pr-guard.yml
+    args:
+      description: Extra arguments for `pr-guard check` (for example `--no-model`).
+      default: ""
+    job-name:
+      default: pr-guard
+---
+"$[[ inputs.job-name ]]":
+  stage: $[[ inputs.stage ]]
+  image:
+    name: $[[ inputs.image ]]:$[[ inputs.version ]]
+    entrypoint: [""]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    # The merge base needs the history; pr-guard takes the target branch from CI_MERGE_REQUEST_TARGET_BRANCH_NAME.
+    GIT_DEPTH: "0"
+    PR_GUARD_MODE: $[[ inputs.mode ]]
+    PR_GUARD_POLICY: $[[ inputs.policy ]]
+    PR_GUARD_ARGS: $[[ inputs.args ]]
+  script:
+    - git fetch --quiet origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    # Inputs reach the shell as variables, never pasted into the script.
+    - |
+      set -- check --policy "$PR_GUARD_POLICY"
+      [ -n "$PR_GUARD_MODE" ] && set -- "$@" --mode "$PR_GUARD_MODE"
+      # shellcheck disable=SC2086 # args is a list of flags on purpose
+      pr-guard "$@" $PR_GUARD_ARGS \
+        --format codeclimate --output pr-guard-codequality.json \
+        --format junit --output pr-guard-junit.xml \
+        --format markdown --output pr-guard.md \
+        --format text --output -
+  artifacts:
+    when: always
+    paths: [pr-guard.md]
+    reports:
+      codequality: pr-guard-codequality.json
+      junit: pr-guard-junit.xml

@@ -7,3 +7,12 @@
   language: system
   pass_filenames: false
   stages: [pre-commit]
+
+# The same without installing anything: runs in the published image (needs Docker).
+- id: pr-guard-docker
+  name: pr-guard (Docker)
+  description: Secrets, sensitive paths, destructive SQL and size on the staged changes.
+  entry: ghcr.io/typestrict-lab/pr-guard:0.1.0 check --staged --no-model
+  language: docker_image
+  pass_filenames: false
+  stages: [pre-commit]

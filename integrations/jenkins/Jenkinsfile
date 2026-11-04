@@ -1,0 +1,35 @@
+// pr-guard on Jenkins, with the image that already holds the model: no plugin, no download at check time.
+// Needs the Docker Pipeline plugin and a multibranch pipeline (CHANGE_TARGET, CHANGE_TITLE and CHANGE_ID are set on
+// pull request builds). The stage only reads the diff the checkout brought; it runs no code from the pull request.
+pipeline {
+  agent any
+  stages {
+    stage('pr-guard') {
+      when { changeRequest() }
+      agent {
+        docker {
+          image 'ghcr.io/typestrict-lab/pr-guard:0.1.0'
+          args '--entrypoint=""'
+          reuseNode true
+        }
+      }
+      steps {
+        // The merge base needs the target branch; multibranch checkouts often fetch only the pull request.
+        sh 'git fetch --quiet origin "+refs/heads/${CHANGE_TARGET}:refs/remotes/origin/${CHANGE_TARGET}"'
+        // The default policy is in shadow mode (reports, never fails); `--mode enforce` fails the build when it blocks.
+        sh '''
+          pr-guard check \
+            --format junit --output pr-guard.xml \
+            --format markdown --output pr-guard.md \
+            --format text --output -
+        '''
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'pr-guard.xml'
+          archiveArtifacts allowEmptyArchive: true, artifacts: 'pr-guard.md'
+        }
+      }
+    }
+  }
+}

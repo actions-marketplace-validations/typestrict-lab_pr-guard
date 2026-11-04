@@ -1,0 +1,17 @@
+# Bitbucket Pipe metadata (https://support.atlassian.com/bitbucket-cloud/docs/write-a-pipe-for-bitbucket-pipelines/).
+name: pr-guard
+image: ghcr.io/typestrict-lab/pr-guard-bitbucket-pipe:0.1.0
+category: Code quality
+description: Decide how many reviewers a pull request needs, with TS-PRGuard and a YAML policy, inside the pipeline.
+repository: https://github.com/typestrict-lab/pr-guard
+maintainer:
+  name: typestrict
+  website: https://typestrict.ai
+vendor:
+  name: typestrict
+  website: https://typestrict.ai
+tags:
+  - pull-request
+  - code-review
+  - security
+  - policy

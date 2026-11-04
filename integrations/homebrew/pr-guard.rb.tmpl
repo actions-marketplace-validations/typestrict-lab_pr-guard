@@ -1,0 +1,52 @@
+# Homebrew formula for the typestrict-lab/homebrew-tap tap, rendered by scripts/homebrew-formula.sh from a release's
+# SHA256SUMS (the release workflow attaches the result as pr-guard.rb). Prebuilt binaries: ONNX Runtime is static on
+# every target except macOS x64, whose archive carries libonnxruntime next to the binary (found through
+# @executable_path, hence libexec plus a symlink).
+class PrGuard < Formula
+  desc "Pull request guard: TS-PRGuard and a YAML policy decide how many reviewers a change needs"
+  homepage "https://github.com/typestrict-lab/pr-guard"
+  version "@VERSION@"
+  license "Apache-2.0"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/typestrict-lab/pr-guard/releases/download/v@VERSION@/pr-guard-aarch64-apple-darwin.tar.gz"
+      sha256 "@SHA_aarch64-apple-darwin@"
+    end
+    on_intel do
+      url "https://github.com/typestrict-lab/pr-guard/releases/download/v@VERSION@/pr-guard-x86_64-apple-darwin.tar.gz"
+      sha256 "@SHA_x86_64-apple-darwin@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/typestrict-lab/pr-guard/releases/download/v@VERSION@/pr-guard-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "@SHA_aarch64-unknown-linux-gnu@"
+    end
+    on_intel do
+      url "https://github.com/typestrict-lab/pr-guard/releases/download/v@VERSION@/pr-guard-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "@SHA_x86_64-unknown-linux-gnu@"
+    end
+  end
+
+  def install
+    libexec.install "pr-guard"
+    libexec.install Dir["libonnxruntime*.dylib"]
+    bin.install_symlink libexec/"pr-guard"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/pr-guard --version")
+    system "git", "init", "--quiet"
+    (testpath/"change.diff").write <<~DIFF
+      diff --git a/a.txt b/a.txt
+      --- a/a.txt
+      +++ b/a.txt
+      @@ -1 +1 @@
+      -old
+      +new
+    DIFF
+    system bin/"pr-guard", "check", "--no-model", "--diff", "change.diff", "--mode", "shadow"
+  end
+end

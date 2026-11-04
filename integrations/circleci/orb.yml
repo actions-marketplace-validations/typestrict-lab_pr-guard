@@ -1,0 +1,126 @@
+# CircleCI orb (packed source). Publish with:
+#   circleci orb publish integrations/circleci/orb.yml typestrict-lab/pr-guard@0.1.0
+#
+#   orbs:
+#     pr-guard: typestrict-lab/pr-guard@0.1.0
+#   workflows:
+#     review:
+#       jobs:
+#         - pr-guard/check:
+#             mode: shadow
+version: 2.1
+
+description: >
+  Decide how many reviewers a pull request needs, with TS-PRGuard and a YAML policy, on the executor. Installs a
+  released pr-guard binary, caches the model and runs `pr-guard check`; findings go to the test results.
+display:
+  home_url: https://github.com/typestrict-lab/pr-guard
+  source_url: https://github.com/typestrict-lab/pr-guard
+
+executors:
+  default:
+    docker:
+      - image: cimg/base:stable
+    resource_class: medium
+
+commands:
+  install:
+    description: Install pr-guard into ~/.local/bin (checked against the release's SHA-256).
+    parameters:
+      version:
+        type: string
+        default: "0.1.0"
+    steps:
+      - run:
+          name: Install pr-guard
+          environment:
+            PR_GUARD_VERSION: << parameters.version >>
+          command: |
+            curl -fsSL --retry 3 "https://raw.githubusercontent.com/typestrict-lab/pr-guard/v${PR_GUARD_VERSION}/install.sh" | sh -s -- "$PR_GUARD_VERSION"
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$BASH_ENV"
+
+  check:
+    description: Run pr-guard check on the branch against its merge base with `base`.
+    parameters:
+      version:
+        type: string
+        default: "0.1.0"
+      base:
+        description: The branch the pull request targets (CircleCI does not say).
+        type: string
+        default: main
+      mode:
+        description: "shadow (report, never fail) or enforce; empty keeps the policy's mode."
+        type: enum
+        enum: ["", shadow, enforce]
+        default: ""
+      policy:
+        type: string
+        default: .github/pr-guard.yml
+      args:
+        description: Extra arguments for `pr-guard check` (for example `--no-model`).
+        type: string
+        default: ""
+    steps:
+      - install:
+          version: << parameters.version >>
+      # The weights (~165 MB) download once per version, not on every pull request.
+      - restore_cache:
+          keys:
+            - pr-guard-model-<< parameters.version >>
+      - run:
+          name: pr-guard check
+          environment:
+            PR_GUARD_BASE: << parameters.base >>
+            PR_GUARD_MODE: << parameters.mode >>
+            PR_GUARD_POLICY: << parameters.policy >>
+            PR_GUARD_ARGS: << parameters.args >>
+          command: |
+            git fetch --quiet origin "+refs/heads/$PR_GUARD_BASE:refs/remotes/origin/$PR_GUARD_BASE"
+            set -- check --base "origin/$PR_GUARD_BASE" --policy "$PR_GUARD_POLICY"
+            [ -n "$PR_GUARD_MODE" ] && set -- "$@" --mode "$PR_GUARD_MODE"
+            mkdir -p pr-guard-results
+            # shellcheck disable=SC2086 # args is a list of flags on purpose
+            pr-guard "$@" $PR_GUARD_ARGS \
+              --format junit --output pr-guard-results/pr-guard.xml \
+              --format markdown --output pr-guard-results/pr-guard.md \
+              --format text --output -
+      - save_cache:
+          key: pr-guard-model-<< parameters.version >>
+          paths:
+            - ~/.cache/pr-guard
+          when: always
+      - store_test_results:
+          path: pr-guard-results
+      - store_artifacts:
+          path: pr-guard-results
+
+jobs:
+  check:
+    description: Check out the pull request and run pr-guard on it.
+    executor: default
+    parameters:
+      version:
+        type: string
+        default: "0.1.0"
+      base:
+        type: string
+        default: main
+      mode:
+        type: enum
+        enum: ["", shadow, enforce]
+        default: ""
+      policy:
+        type: string
+        default: .github/pr-guard.yml
+      args:
+        type: string
+        default: ""
+    steps:
+      - checkout
+      - check:
+          version: << parameters.version >>
+          base: << parameters.base >>
+          mode: << parameters.mode >>
+          policy: << parameters.policy >>
+          args: << parameters.args >>
