@@ -1,0 +1,238 @@
+name: Release
+# On a v* tag: build every platform, smoke-test each archive with the real model, attach the archives and their SHA-256
+# sums to the GitHub release, then publish the Docker image. See "How ONNX Runtime is linked" in README.md.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # ONNX Runtime for x86_64-apple-darwin: pyke ships no prebuilt for it and Microsoft's last macOS x64 build is 1.23.2.
+  ORT_MAC_X64_VERSION: "1.23.2"
+  ORT_MAC_X64_SHA256: d10359e16347b57d9959f7e80a225a5b4a66ed7d7e007274a15cae86836485a6
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          - { target: aarch64-apple-darwin, os: macos-14 }
+          - { target: x86_64-apple-darwin, os: macos-14 } # cross-compiled, smoke-tested under Rosetta
+          - { target: x86_64-pc-windows-msvc, os: windows-2022 }
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Where ort-sys unpacks its prebuilt ONNX Runtime, so the Windows job can pick DirectML.dll up from a known place.
+      ORT_CACHE_DIR: ${{ github.workspace }}/.ort-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches Cargo.toml
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+          if [[ "v$version" != "$GITHUB_REF_NAME" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME but Cargo.toml says $version"
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: ONNX Runtime for macOS x64 (shared library)
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: |
+          set -euo pipefail
+          v="$ORT_MAC_X64_VERSION"
+          curl -fsSL --retry 3 -o ort.tgz "https://github.com/microsoft/onnxruntime/releases/download/v$v/onnxruntime-osx-x86_64-$v.tgz"
+          echo "$ORT_MAC_X64_SHA256  ort.tgz" | shasum -a 256 -c -
+          tar -xzf ort.tgz
+          lib="$PWD/onnxruntime-osx-x86_64-$v/lib"
+          {
+            echo "ORT_LIB_PATH=$lib"
+            echo "ORT_PREFER_DYNAMIC_LINK=1"
+            # The binary finds libonnxruntime next to itself.
+            echo "CARGO_TARGET_X86_64_APPLE_DARWIN_RUSTFLAGS=-C link-arg=-Wl,-rpath,@executable_path"
+            echo "EXTRA_FILES=$lib/libonnxruntime.$v.dylib"
+          } >> "$GITHUB_ENV"
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Native libraries to ship (Windows)
+        if: contains(matrix.target, 'windows')
+        run: |
+          set -euo pipefail
+          # onnxruntime.lib is static, but it imports DirectML.dll; Windows' own copy is older than the one ORT was
+          # built against, so the matching DLL ships next to pr-guard.exe (loaded from the exe's directory first).
+          dll="$(find "$(cygpath -u "$ORT_CACHE_DIR")/dfbin/${{ matrix.target }}" -name DirectML.dll | head -1)"
+          [[ -n "$dll" ]] || { echo "::error::DirectML.dll not found in the ort cache"; exit 1; }
+          echo "EXTRA_FILES=$dll" >> "$GITHUB_ENV"
+
+      - name: Package
+        # EXTRA_FILES holds one path at most, and no spaces on the runners.
+        run: scripts/package.sh "${{ matrix.target }}" dist ${EXTRA_FILES:+"$EXTRA_FILES"}
+
+      - name: Show linked libraries
+        run: |
+          case "${{ matrix.target }}" in
+            *linux*) ldd target/${{ matrix.target }}/release/pr-guard ;;
+            *darwin*) otool -L target/${{ matrix.target }}/release/pr-guard ;;
+            *windows*) ls -l target/${{ matrix.target }}/release/pr-guard.exe ;;
+          esac
+
+      - name: Cache the model
+        uses: actions/cache@v4
+        with:
+          path: model
+          key: ts-prguard-${{ hashFiles('scripts/fetch-model.sh') }}
+
+      - name: Smoke test the archive with the model
+        run: |
+          set -euo pipefail
+          scripts/fetch-model.sh model
+          smoke="$RUNNER_TEMP/smoke"
+          mkdir -p "$smoke"
+          tar -xzf dist/pr-guard-${{ matrix.target }}.tar.gz -C "$smoke"
+          run=()
+          if [[ "${{ matrix.target }}" == x86_64-apple-darwin ]]; then
+            if ! arch -x86_64 /usr/bin/true 2>/dev/null; then echo "::warning::no Rosetta, x64 smoke test skipped"; exit 0; fi
+            run=(arch -x86_64)
+          fi
+          cat > "$RUNNER_TEMP/smoke.diff" <<'EOF'
+          diff --git a/src/auth.py b/src/auth.py
+          --- a/src/auth.py
+          +++ b/src/auth.py
+          @@ -1,3 +1,3 @@
+           def find_user(db, name):
+          -    return db.execute("SELECT * FROM users WHERE name = ?", (name,))
+          +    return db.execute(f"SELECT * FROM users WHERE name = '{name}'")
+          EOF
+          "${run[@]}" "$smoke/pr-guard" --version
+          "${run[@]}" "$smoke/pr-guard" check --diff "$RUNNER_TEMP/smoke.diff" --description "Use an f-string in find_user" \
+            --model model --mode shadow --format json --output "$RUNNER_TEMP/verdict.json"
+          cat "$RUNNER_TEMP/verdict.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS
+        working-directory: dist
+        run: cat ./*.sha256 | sort -k 2 > SHA256SUMS && cat SHA256SUMS
+      # The formula for the tap (typestrict-lab/homebrew-tap), attached to the release; copying it to the tap is manual.
+      - name: Homebrew formula
+        run: scripts/homebrew-formula.sh "$GITHUB_REF_NAME" dist/SHA256SUMS > dist/pr-guard.rb && cat dist/pr-guard.rb
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" \
+            --generate-notes --verify-tag
+
+  # The image is built natively on each architecture (no QEMU: compiling under emulation takes an hour), pushed by
+  # digest, then joined into one multi-arch tag.
+  docker:
+    needs: build
+    name: docker ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - { platform: linux/amd64, os: ubuntu-22.04 }
+          - { platform: linux/arm64, os: ubuntu-22.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+      - name: Keep the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: mkdir -p digests && touch "digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.os }}
+          path: digests/*
+          if-no-files-found: error
+
+  docker-manifest:
+    needs: [docker, release]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Tag the multi-arch image
+        working-directory: digests
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          tags=(-t "$IMAGE:$version" -t "$IMAGE:${version%.*}")
+          # Pre-releases (v0.2.0-rc.1) never move latest.
+          [[ "$version" != *-* ]] && tags+=(-t "$IMAGE:latest")
+          # shellcheck disable=SC2046 # one argument per digest
+          docker buildx imagetools create "${tags[@]}" $(printf "$IMAGE@sha256:%s " *)
+          docker buildx imagetools inspect "$IMAGE:$version"
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      # The Bitbucket Pipe: the image above plus its entry script. Only COPY on top of a multi-arch base, so both
+      # platforms build here without emulation.
+      - name: Bitbucket Pipe image
+        uses: docker/build-push-action@v6
+        with:
+          context: integrations/bitbucket
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ steps.v.outputs.version }}
+          push: true
+          tags: ghcr.io/${{ github.repository }}-bitbucket-pipe:${{ steps.v.outputs.version }}
