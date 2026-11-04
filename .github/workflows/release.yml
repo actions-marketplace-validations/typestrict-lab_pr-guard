@@ -3,7 +3,8 @@ name: Release
 # sums to the GitHub release, then publish the Docker image. See "How ONNX Runtime is linked" in README.md.
 on:
   push:
-    tags: ["v*"]
+    # Full versions only: the moving major tag (v1), which the GitHub Marketplace release uses, builds nothing.
+    tags: ["v*.*.*"]
 
 permissions:
   contents: read
