@@ -13,7 +13,8 @@ for d in sorted(glob.glob('examples/*/scenarios/*/')):
         if m: p[m[1]]=(1.0,m[2])
     yes=lambda t: p[t][1].startswith('Yes')
     got={'description_matches':'yes' if yes('pr-descricao-noul') else 'no','vulnerability':'yes' if yes('prg-vul') else 'no','breaking':'yes' if yes('prg-quebra') else 'no',
-         'tests':{'Yes':'covers','No':'missing','Not':'not_applicable'}[p['prg-testes'][1].split()[0].rstrip(',:')],'type':p['prg-tipo'][1],
+         'tests':{'Yes':'covers','No':'missing','Not':'not_applicable'}[p['prg-testes'][1].split()[0].rstrip(',:')],**({'type':p['prg-tipo'][1]} if 'prg-tipo' in p else {}),  # a package without the type task leaves code changes unlabeled
+
          'complexity':['Trivial','Small','Medium','Large','Very'].index(p['prg-complexidade'][1].split(':')[0].split()[0])}
     line=[]
     for k in got:
