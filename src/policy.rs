@@ -133,7 +133,10 @@ impl Default for Policy {
             questions: BTreeMap::from([
                 (Question::DescriptionMatches, g(2.0, Some(0.6), Some(0.3))),
                 (Question::Complexity, g(1.0, Some(0.25), None)),
-                (Question::Vulnerability, g(3.0, Some(0.7), Some(0.4))),
+                // A warning from P >= 0.7 (95% precise on TS-PRGuard v1's held-out fixes), never a danger: those fixes are
+                // more than half of the test set, a real repository's pull requests almost never are, and the scenarios in
+                // examples/ flagged 6 of 27 clean changes. Set `min` to block on it.
+                (Question::Vulnerability, g(3.0, Some(0.3), None)),
                 (Question::TestsCover, g(2.0, Some(0.5), None)),
                 (Question::Breaking, g(2.0, Some(0.5), None)),
                 (Question::ResolvesIssue, g(1.0, Some(0.5), None)),

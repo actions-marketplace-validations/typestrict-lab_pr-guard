@@ -234,12 +234,17 @@ mod tests {
     }
 
     #[test]
-    fn a_likely_vulnerability_is_a_danger_two_reviewers_and_a_failed_check_unless_shadow() {
+    fn a_likely_vulnerability_warns_by_default_and_blocks_where_the_policy_makes_it_a_danger_unless_shadow() {
         let a = Answers { vulnerability: Some(0.8), cwe: Some("CWE-89".into()), ..good() };
         let v = decide(&Policy::default(), &[code("src/db.py")], &a, &[], vec![]);
-        assert_eq!((v.reviewers, v.blocked), (2, true));
+        assert_eq!((v.findings[0].level, v.blocked), (Level::Warning, false));
+        assert!(v.reviewers >= 1);
         assert_eq!(v.findings[0].message, "May introduce a vulnerability (80%, likely CWE-89)");
-        let shadow = Policy { mode: Mode::Shadow, auto_merge: true, ..Policy::default() };
+        let mut strict = Policy::default();
+        strict.questions.get_mut(&Question::Vulnerability).unwrap().min = Some(0.4);
+        let v = decide(&strict, &[code("src/db.py")], &a, &[], vec![]);
+        assert_eq!((v.reviewers, v.blocked), (2, true));
+        let shadow = Policy { mode: Mode::Shadow, auto_merge: true, ..strict };
         let v = decide(&shadow, &[code("src/db.py")], &a, &[], vec![]);
         assert_eq!((v.reviewers, v.blocked, v.auto_merge), (2, false, false));
     }
