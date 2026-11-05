@@ -1,4 +1,4 @@
-name: PR Guard
+name: PR Guard by typestrict.ai
 description: Decide how many reviewers a pull request needs, with TS-PRGuard and a YAML policy, on the runner.
 branding:
   icon: shield
