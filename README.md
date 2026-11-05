@@ -27,8 +27,10 @@ sensitive paths, and lets a YAML policy decide: **no reviewer, one or two, or bl
 request, labels it and sets one status you can make required.
 
 - **Private by design.** No API, no key, no telemetry: the model runs on the CI runner and the code never leaves it.
-- **Fast enough for every pull request.** On a stock `ubuntu-latest`, 11 seconds and 460 MB on a 48-line pull request
-  (first model download included), 23 to 71 seconds and up to 1.9 GB from 382 to 1,937 changed lines.
+- **A cost that follows the change, with a ceiling.** On a stock `ubuntu-latest`, 11 seconds and 460 MB on a 48-line
+  pull request (first model download included), 23 to 71 seconds and 1.9 GB from 382 to 1,937 changed lines. Each
+  question reads at most 5,000 characters of the diff (14,000 for breaking change, up to 4,096 tokens), so memory stops
+  growing once the diff fills that window. No inference service to wait on.
 - **Everywhere your code is.** GitHub, GitLab and Bitbucket; GitHub Actions, GitLab CI, Bitbucket Pipelines, CircleCI,
   Bitrise, Jenkins, pre-commit, or any shell.
 - **Your model if you want.** Train one on your own pull requests with [typestrict.ai](https://typestrict.ai) and point
@@ -54,7 +56,7 @@ jobs:
       - uses: typestrict-lab/pr-guard@v1
 ```
 
-`@v1` follows the fixes of version 1. In production, pin the commit it points to instead, so the action cannot change
+`@v1` is the action's major version and follows its fixes; the binary it installs is v0.1.0. In production, pin the commit it points to instead, so the action cannot change
 under you: `uses: typestrict-lab/pr-guard@3f5058fc36268c96253afa0d3e909d37e92eaa2f # v1`.
 
 It starts in **shadow mode**: it reports on every pull request and never fails one. When its answers look right on your
@@ -96,6 +98,9 @@ flowchart LR
 
 The answers weigh into a score; 85% or more needs no reviewer, 60% or more one, below that two. The comment shows the
 arithmetic for each pull request.
+
+No reviewer is not a merge: the policy asks for no extra human approval. pr-guard comments, labels and sets a status, and
+never merges; `auto_merge: true` only adds the `pr-guard:auto-merge` label for your own automation.
 
 ## The policy
 
