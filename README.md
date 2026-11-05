@@ -134,7 +134,7 @@ each key and how to choose the model.
 ## Security of the workflow
 
 - **Token.** The quick start asks only for `contents: read`, `pull-requests: write` (comment and labels) and
-  `statuses: write`. `security-events: write` is needed only for the SARIF upload; `upload-sarif: false` turns it off.
+  `statuses: write`. `upload-sarif: "true"` also sends the findings to code scanning, and needs `security-events: write`.
   The action never runs code from the pull request: it reads the diff the checkout brought.
 - **Forks.** On pull requests from forks GitHub gives the workflow a read-only token, so the comment, labels and status
   may not be written. pr-guard does not fail on that: the verdict is printed and in the job summary. A required

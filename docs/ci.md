@@ -82,8 +82,8 @@ In JUnit a case fails at danger level and the verdict case fails when the policy
 ## GitHub Action
 
 The action (`action.yml` at the root of this repository, on the GitHub Marketplace) installs a released binary, caches the model in `~/.cache/pr-guard`, runs
-`pr-guard check` with the workflow's token (comment, labels and the status, see [publishing to the host](hosts.md)) and uploads the
-SARIF to code scanning. The sticky comment's markdown also goes to `pr-guard.md` and to the job summary.
+`pr-guard check` with the workflow's token (comment, labels and the status, see [publishing to the host](hosts.md)) and, with
+`upload-sarif: "true"`, uploads the SARIF to code scanning. The sticky comment's markdown also goes to `pr-guard.md` and to the job summary.
 
 ```yaml
 on: pull_request
@@ -91,7 +91,7 @@ permissions:
   contents: read
   pull-requests: write   # comment and labels
   statuses: write        # the pr-guard status
-  security-events: write # SARIF
+  # security-events: write, only with upload-sarif: "true"
 jobs:
   pr-guard:
     runs-on: ubuntu-latest

@@ -25,7 +25,7 @@ inputs:
     default: ""
   upload-sarif:
     description: "Upload the findings to code scanning (needs `security-events: write`)."
-    default: "true"
+    default: "false"
 
 outputs:
   exit-code:
