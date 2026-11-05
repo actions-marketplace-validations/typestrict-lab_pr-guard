@@ -27,7 +27,8 @@ sensitive paths, and lets a YAML policy decide: **no reviewer, one or two, or bl
 request, labels it and sets one status you can make required.
 
 - **Private by design.** No API, no key, no telemetry: the model runs on the CI runner and the code never leaves it.
-- **Fast enough for every pull request.** 5 to 20 seconds on a stock `ubuntu-latest`, about 650 MB of memory.
+- **Fast enough for every pull request.** On a stock `ubuntu-latest`, 11 seconds and 460 MB on a 48-line pull request
+  (first model download included), 23 to 71 seconds and up to 1.9 GB from 382 to 1,937 changed lines.
 - **Everywhere your code is.** GitHub, GitLab and Bitbucket; GitHub Actions, GitLab CI, Bitbucket Pipelines, CircleCI,
   Bitrise, Jenkins, pre-commit, or any shell.
 - **Your model if you want.** Train one on your own pull requests with [typestrict.ai](https://typestrict.ai) and point
@@ -52,6 +53,9 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: typestrict-lab/pr-guard@v1
 ```
+
+`@v1` follows the fixes of version 1. In production, pin the commit it points to instead, so the action cannot change
+under you: `uses: typestrict-lab/pr-guard@3f5058fc36268c96253afa0d3e909d37e92eaa2f # v1`.
 
 It starts in **shadow mode**: it reports on every pull request and never fails one. When its answers look right on your
 code, write `mode: enforce` in `.github/pr-guard.yml` and make `pr-guard` a required status.
@@ -111,6 +115,34 @@ rules:
 
 Every key is optional. `pr-guard init` prints the whole default, commented; [docs/policy.md](docs/policy.md) explains
 each key and how to choose the model.
+
+## Limitations
+
+- **Languages.** TS-PRGuard v1 was trained and evaluated on pull requests described in English, with code in
+  JavaScript, TypeScript, Python, Go, Rust, Java, Kotlin, Swift, Dart, PHP and Ruby (`languages` in the policy). Code
+  in any other language is "not evaluated": at least one reviewer, never auto-merge. The vulnerability question has
+  almost no held-out examples in Kotlin, Swift and Dart.
+- **Vulnerability.** Its held-out set is real security fixes, each once as the fix and once reversed, so half of it
+  (299 of 597) introduces a vulnerability. There a warning from 70% is 90% precise, catches 91% of the vulnerable
+  changes, fires on 9.7% of the safe ones and misses 8.7%. Real pull requests are rarely vulnerable: on the 38 pull
+  requests in [examples/](examples) the warning went off on 4 of the 28 clean changes and caught 5 of the 10 planted
+  vulnerabilities. That is why it only warns by default.
+- **How it was measured.** The held-out set was split by repository (about one in ten of 8,355, never on both sides),
+  but those are public projects, not yours. On breaking changes Jev is ahead (macro-F1 0.870 against 0.910). Run it in
+  shadow mode on your own pull requests before you enforce it.
+
+## Security of the workflow
+
+- **Token.** The quick start asks only for `contents: read`, `pull-requests: write` (comment and labels) and
+  `statuses: write`. `security-events: write` is needed only for the SARIF upload; `upload-sarif: false` turns it off.
+  The action never runs code from the pull request: it reads the diff the checkout brought.
+- **Forks.** On pull requests from forks GitHub gives the workflow a read-only token, so the comment, labels and status
+  may not be written. pr-guard does not fail on that: the verdict is printed and in the job summary. A required
+  `pr-guard` status will then be missing on those pull requests. Keep `on: pull_request`; do not move to
+  `pull_request_target` to get a write token for forks.
+- **Self-hosted runners.** The runner needs to reach Hugging Face once per model, or a mirror
+  (`$PR_GUARD_HF_ENDPOINT`), a URL or a directory, or use the Docker image, which ships with the model. Every file is
+  checked against its SHA-256. Avoid running pull requests from forks on self-hosted runners of a public repository.
 
 ## Learn more
 

@@ -74,9 +74,11 @@ auto_merge: false            # label PRs that need nobody pr-guard:auto-merge
 | `languages` | languages the model was evaluated on; other code is "not evaluated" and never auto-merges |
 | `publish` | `comment`, `labels`, `status`, `reviewers`: what is written on the pull request ([hosts](hosts.md)) |
 
-Why vulnerability only warns by default: on the model's held-out set a warning from 70% is 95% precise, but that set is
-more than half real security fixes, and real pull requests almost never are. On the [example
-projects](../examples) it flagged 6 of 27 clean changes. Add `block:` once it is right on your code.
+Why vulnerability only warns by default: on the model's held-out set a warning from 70% is 90% precise (273 of 302),
+catches 91% of the vulnerable changes and fires on 9.7% of the safe ones, but that set is real security fixes, once as
+the fix and once reversed, so half of it introduces a vulnerability, and real pull requests almost never do. On the 38
+pull requests of the [example projects](../examples) it warned on 4 of 28 clean changes and caught 5 of the 10 planted
+vulnerabilities. Add `block:` once it is right on your code.
 
 ## Choosing the model
 
