@@ -57,7 +57,7 @@ jobs:
 ```
 
 `@v1` is the action's major version and follows its fixes; the binary it installs is v0.1.0. In production, pin the commit it points to instead, so the action cannot change
-under you: `uses: typestrict-lab/pr-guard@3f5058fc36268c96253afa0d3e909d37e92eaa2f # v1`.
+under you: `uses: typestrict-lab/pr-guard@e6e89c7dd5a5d5df52cf07f1249fc0cbd9ae3f41 # v1`.
 
 It starts in **shadow mode**: it reports on every pull request and never fails one. When its answers look right on your
 code, write `mode: enforce` in `.github/pr-guard.yml` and make `pr-guard` a required status.
